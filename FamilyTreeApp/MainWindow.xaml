@@ -5,7 +5,7 @@
         Background="#F5F1EB"
         FontFamily="Microsoft YaHei UI, Microsoft YaHei"
         ResizeMode="CanResizeWithGrip"
-        MinWidth="960" MinHeight="680">
+        MinWidth="400" MinHeight="400">
     
     <Grid>
         <Grid.RowDefinitions>
@@ -17,17 +17,22 @@
         <Border Grid.Row="0" Background="#1A1714" BorderThickness="0,0,0,1"
                 BorderBrush="#2A2318">
             <Grid Margin="48,0">
-                <!-- 左侧：标题 + 导航项 -->
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    
-                    <!-- 导航项 -->
-                    <RadioButton x:Name="NavHome" Content="首页" IsChecked="True"
+                    <RadioButton x:Name="NavHome" Content="首页"
                                  Style="{StaticResource NavRadioButtonStyle}"
+                                 Visibility="Collapsed"
                                  Checked="Nav_Checked" Tag="Home"/>
                     <RadioButton x:Name="NavClan" Content="族谱管理"
                                  Style="{StaticResource NavRadioButtonStyle}"
+                                 Visibility="Collapsed"
                                  Checked="Nav_Checked" Tag="Clan"/>
                 </StackPanel>
+                <Button x:Name="LogoutButton" Content="退出登录"
+                        HorizontalAlignment="Right" VerticalAlignment="Center"
+                        Visibility="Collapsed"
+                        Click="LogoutButton_Click"
+                        Background="Transparent" Foreground="#A89880"
+                        BorderThickness="0" Cursor="Hand" FontSize="13" Padding="16,12"/>
             </Grid>
         </Border>
 

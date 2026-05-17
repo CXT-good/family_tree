@@ -109,9 +109,17 @@
                 </Style>
         </Page.Resources>
 
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid x:Name="PageRoot"
+              UseLayoutRounding="True"
+              TextOptions.TextFormattingMode="Display"
+              Loaded="PageRoot_Loaded">
+                <ScrollViewer x:Name="MainPageScroll"
+                              VerticalScrollBarVisibility="Auto"
+                              PanningMode="VerticalOnly"
+                              CanContentScroll="False">
                 <Grid Margin="30,20,20,40">
                         <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
@@ -460,8 +468,132 @@
                                 </StackPanel>
                         </Border>
 
-                        <!-- 第四行：族谱树形预览与亲缘查询 -->
+                        <!-- 第四行：成员姓名模糊查找 -->
                         <Border Grid.Row="3"
+                                Margin="0,0,0,10"
+                                Style="{StaticResource ClanItemStyle}">
+                                <StackPanel>
+                                        <TextBlock Text="成员查找"
+                                                   FontSize="18"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#2C2217"
+                                                   Margin="20,0,0,12"/>
+
+                                        <StackPanel Orientation="Horizontal"
+                                                    Margin="20,0,0,12">
+                                                <controls:PlaceholderTextBox x:Name="MemberSearchTreeIdInput"
+                                                                             Width="120"
+                                                                             Style="{StaticResource InputBoxStyle}"
+                                                                             Placeholder="族谱ID"
+                                                                             Margin="0,0,8,0"/>
+                                                <controls:PlaceholderTextBox x:Name="MemberSearchNameInput"
+                                                                             Width="180"
+                                                                             Style="{StaticResource InputBoxStyle}"
+                                                                             Placeholder="姓名模糊（可留空）"
+                                                                             Margin="0,0,8,0"/>
+                                                <Button Content="查找"
+                                                        Style="{StaticResource OperationButtonStyle}"
+                                                        Width="70"
+                                                        Click="MemberSearchButton_Click"/>
+                                                <Button Content="浏览全部"
+                                                        Style="{StaticResource OperationButtonStyle}"
+                                                        Width="90"
+                                                        Margin="8,0,0,0"
+                                                        Click="MemberShowAllButton_Click"/>
+                                        </StackPanel>
+
+                                        <TextBlock x:Name="MemberSearchSummary"
+                                                   Text="输入族谱 ID 后查询；大族谱按页浏览（每页 80 条），不会一次加载全部"
+                                                   FontSize="13"
+                                                   Foreground="#8A7E72"
+                                                   Margin="20,0,0,8"
+                                                   TextWrapping="Wrap"/>
+
+                                        <StackPanel Orientation="Horizontal"
+                                                    HorizontalAlignment="Center"
+                                                    Margin="20,0,20,8">
+                                                <Button x:Name="MemberSearchPrevPageButton"
+                                                        Content="上一页"
+                                                        Style="{StaticResource OperationButtonStyle}"
+                                                        Width="72"
+                                                        IsEnabled="False"
+                                                        Click="MemberSearchPrevPageButton_Click"/>
+                                                <TextBlock x:Name="MemberSearchPageInfo"
+                                                           Text="第 1 / 1 页"
+                                                           FontSize="13"
+                                                           Foreground="#2C2217"
+                                                           VerticalAlignment="Center"
+                                                           Margin="16,0"
+                                                           MinWidth="100"
+                                                           TextAlignment="Center"/>
+                                                <Button x:Name="MemberSearchNextPageButton"
+                                                        Content="下一页"
+                                                        Style="{StaticResource OperationButtonStyle}"
+                                                        Width="72"
+                                                        IsEnabled="False"
+                                                        Click="MemberSearchNextPageButton_Click"/>
+                                        </StackPanel>
+
+                                        <ListView x:Name="MemberSearchResultsList"
+                                                  MaxHeight="320"
+                                                  Margin="20,0,20,16"
+                                                  BorderThickness="0"
+                                                  Background="Transparent"
+                                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                  ScrollViewer.CanContentScroll="False"
+                                                  VirtualizingPanel.IsVirtualizing="True"
+                                                  VirtualizingPanel.VirtualizationMode="Recycling">
+                                                <ListView.ItemContainerStyle>
+                                                        <Style TargetType="ListViewItem">
+                                                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                                                <Setter Property="Padding" Value="0"/>
+                                                                <Setter Property="Margin" Value="0,0,0,8"/>
+                                                                <Setter Property="Background" Value="Transparent"/>
+                                                                <Setter Property="BorderThickness" Value="0"/>
+                                                                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                                                                <Setter Property="Template">
+                                                                        <Setter.Value>
+                                                                                <ControlTemplate TargetType="ListViewItem">
+                                                                                        <ContentPresenter/>
+                                                                                </ControlTemplate>
+                                                                        </Setter.Value>
+                                                                </Setter>
+                                                        </Style>
+                                                </ListView.ItemContainerStyle>
+                                                <ListView.ItemTemplate>
+                                                        <DataTemplate>
+                                                                <Border Background="#FFFFFF"
+                                                                        BorderBrush="#E0D6CA"
+                                                                        BorderThickness="1"
+                                                                        CornerRadius="8"
+                                                                        Padding="14,10">
+                                                                        <StackPanel>
+                                                                                <TextBlock Text="{Binding FullName}"
+                                                                                           FontSize="15"
+                                                                                           FontWeight="SemiBold"
+                                                                                           Foreground="#2C2217"/>
+                                                                                <TextBlock FontSize="12"
+                                                                                           Foreground="#8A7E72"
+                                                                                           Margin="0,6,0,0">
+                                                                                        <Run Text="成员ID: "/>
+                                                                                        <Run Text="{Binding MemberId, Mode=OneWay}"/>
+                                                                                        <Run Text="  ·  性别: "/>
+                                                                                        <Run Text="{Binding Gender, Mode=OneWay}"/>
+                                                                                </TextBlock>
+                                                                                <TextBlock FontSize="12"
+                                                                                           Foreground="#8A7E72"
+                                                                                           Margin="0,4,0,0"
+                                                                                           Text="{Binding Generation, StringFormat='世代: {0}', TargetNullValue='世代: —'}"/>
+                                                                        </StackPanel>
+                                                                </Border>
+                                                        </DataTemplate>
+                                                </ListView.ItemTemplate>
+                                        </ListView>
+                                </StackPanel>
+                        </Border>
+
+                        <!-- 第五行：族谱树形预览与亲缘查询 -->
+                        <Border Grid.Row="4"
                                 Margin="0,0,0,10"
                                 Style="{StaticResource ClanItemStyle}">
                                 <StackPanel>
@@ -482,6 +614,11 @@
                                                                    FontSize="16"
                                                                    FontWeight="SemiBold"
                                                                    Foreground="#2C2217"
+                                                                   Margin="0,0,0,6"/>
+                                                        <TextBlock Text="按需加载：先显示根节点与一层关系，点击带「▸」的节点再展开，可逐层查看该支全部后代或全部祖先，避免一次加载卡顿。"
+                                                                   FontSize="11"
+                                                                   Foreground="#8A7E72"
+                                                                   TextWrapping="Wrap"
                                                                    Margin="0,0,0,12"/>
 
                                                         <Grid Margin="0,0,0,16">
@@ -525,6 +662,11 @@
                                                                    FontSize="14"
                                                                    FontWeight="SemiBold"
                                                                    Foreground="#2C2217"
+                                                                   Margin="0,0,0,4"/>
+                                                        <TextBlock x:Name="BranchQueryHint"
+                                                                   FontSize="11"
+                                                                   Foreground="#8A7E72"
+                                                                   TextWrapping="Wrap"
                                                                    Margin="0,0,0,8"/>
                                                         <Border Background="#FFFFFF"
                                                                 BorderBrush="#E0D6CA"
@@ -540,6 +682,11 @@
                                                                    FontSize="14"
                                                                    FontWeight="SemiBold"
                                                                    Foreground="#2C2217"
+                                                                   Margin="0,0,0,4"/>
+                                                        <TextBlock x:Name="AncestorQueryHint"
+                                                                   FontSize="11"
+                                                                   Foreground="#8A7E72"
+                                                                   TextWrapping="Wrap"
                                                                    Margin="0,0,0,8"/>
                                                         <Border Background="#FFFFFF"
                                                                 BorderBrush="#E0D6CA"
@@ -621,6 +768,7 @@
                         <Popup x:Name="InvitePopup"
                                StaysOpen="True"
                                Placement="Center"
+                               PlacementTarget="{Binding ElementName=PageRoot}"
                                AllowsTransparency="True"
                                PopupAnimation="Fade">
                                 <Border Width="400"
@@ -641,7 +789,8 @@
                                                            Foreground="#2C2217"
                                                            Margin="0,0,0,16"/>
 
-                                                <controls:PlaceholderTextBox Style="{StaticResource InputBoxStyle}"
+                                                <controls:PlaceholderTextBox x:Name="InviteUserIdInput"
+                                                                             Style="{StaticResource InputBoxStyle}"
                                                                              Placeholder="请输入被邀请人ID"/>
 
                                                 <StackPanel Orientation="Horizontal"
@@ -661,9 +810,11 @@
                         <Popup x:Name="MemberPopup"
                                StaysOpen="True"
                                Placement="Center"
+                               PlacementTarget="{Binding ElementName=PageRoot}"
                                AllowsTransparency="True"
                                PopupAnimation="Fade">
-                                <Border Width="500"
+                                <Border Width="520"
+                                        MaxHeight="640"
                                         Background="#FFFFFF"
                                         CornerRadius="14"
                                         Padding="28,24"
@@ -687,18 +838,20 @@
                                                         <Button Content="删除成员"
                                                                 Style="{StaticResource OperationButtonStyle}"
                                                                 Click="DeleteMember_Click"/>
-                                                        <Button Content="确认删除"
+                                                        <Button Content="关闭"
+                                                                Margin="20,0,0,0"
                                                                 Style="{StaticResource OperationButtonStyle}"
-                                                                Click="MemberToolbarDeleteConfirm_Click"/>
-                                                        <Button Content="取消"
-                                                                Style="{StaticResource OperationButtonStyle}"
-                                                                Click="MemberToolbarDeleteCancel_Click"/>
+                                                                Click="MemberPopupClose_Click"/>
                                                 </StackPanel>
 
-                                                <!-- 成员信息显示区域 -->
-                                                <StackPanel x:Name="MemberInfoPanel">
-                                                        <!-- 这里将根据选择的操作动态显示内容 -->
-                                                </StackPanel>
+                                                <!-- 成员信息显示区域（可滚动，避免底部按钮被挤出可视区） -->
+                                                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                              MaxHeight="480"
+                                                              Margin="0,0,0,8">
+                                                        <StackPanel x:Name="MemberInfoPanel">
+                                                                <!-- 这里将根据选择的操作动态显示内容 -->
+                                                        </StackPanel>
+                                                </ScrollViewer>
                                         </StackPanel>
                                 </Border>
                         </Popup>
@@ -707,6 +860,7 @@
                         <Popup x:Name="DeleteConfirmPopup"
                                StaysOpen="True"
                                Placement="Center"
+                               PlacementTarget="{Binding ElementName=PageRoot}"
                                AllowsTransparency="True"
                                PopupAnimation="Fade">
                                 <Border Width="400"
@@ -745,5 +899,6 @@
                                 </Border>
                         </Popup>
                 </Grid>
-        </ScrollViewer>
+                </ScrollViewer>
+        </Grid>
 </Page>

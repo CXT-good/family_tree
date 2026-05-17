@@ -85,8 +85,6 @@ public class AuthController : ControllerBase
         if (!ModelState.IsValid)
             return ValidationProblem(ModelState);
 
-        var hash = PasswordHasher.Sha256Hex(body.Password);
-
         await using var conn = new MySqlConnection(_connectionString);
         await conn.OpenAsync();
 
@@ -99,7 +97,7 @@ public class AuthController : ControllerBase
 
         var row = await conn.QueryFirstOrDefaultAsync<LoginRow>(sql, new { username = body.Username.Trim() });
 
-        if (row is null || row.PasswordHash != hash)
+        if (row is null || !PasswordHasher.Verify(body.Password, row.PasswordHash))
             return Unauthorized(new { success = false, message = "用户名或密码错误" });
 
         return Ok(new AuthOkResponse

@@ -65,7 +65,8 @@ global_marriage_id = 1
 
 
 def _password_placeholder() -> str:
-    return hashlib.sha256(os.urandom(32)).hexdigest()[:32]
+    # 测试数据统一明文密码，与 load_data 及 API PasswordHasher.Verify 一致
+    return "123456"
 
 
 def clamp_dt(dt: datetime) -> datetime:

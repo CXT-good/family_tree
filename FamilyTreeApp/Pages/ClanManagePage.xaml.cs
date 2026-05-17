@@ -1,12 +1,16 @@
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using FamilyTreeApp.Controls;
+using FamilyTreeApp.Helpers;
 using FamilyTreeApp.Models;
 
 namespace FamilyTreeApp.Pages;
@@ -24,6 +28,12 @@ public partial class ClanManagePage : Page
     private List<ClanInfo> _createdClans = new();
     private List<ClanInfo> _managedClans = new();
     private ulong _currentTreeId;
+
+    private const int MemberSearchPageSize = 80;
+    private ulong _memberSearchTreeId;
+    private string? _memberSearchKeyword;
+    private int _memberSearchPage = 1;
+    private int _memberSearchTotal;
 
     public ClanManagePage(ulong userId)
     {
@@ -185,19 +195,7 @@ public partial class ClanManagePage : Page
         {
             button.IsEnabled = false;
             Mouse.OverrideCursor = Cursors.Wait;
-            BranchTreeView.Items.Clear();
-            var response = await _httpClient.GetAsync(
-                $"api/Members/branch?treeId={treeId}&rootMemberId={rootMemberId}&maxDepth=4");
-            var body = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<MemberTreeResponseDto>(body, JsonOptions);
-
-            if (result is not { Success: true, Data: { } node })
-            {
-                MessageBox.Show(result?.Message ?? "未找到该分支或查询失败。", "分支预览", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            BranchTreeView.Items.Add(CreateTreeViewItem(node, expandAll: true));
+            await InitLazyBranchTreeAsync(treeId, rootMemberId);
         }
         catch (Exception ex)
         {
@@ -232,18 +230,7 @@ public partial class ClanManagePage : Page
         {
             button.IsEnabled = false;
             Mouse.OverrideCursor = Cursors.Wait;
-            AncestorTreeView.Items.Clear();
-            var response = await _httpClient.GetAsync($"api/Members/ancestors?treeId={treeId}&memberId={memberId}");
-            var body = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<MemberTreeResponseDto>(body, JsonOptions);
-
-            if (result is not { Success: true, Data: { } node })
-            {
-                MessageBox.Show(result?.Message ?? "未找到该成员或查询失败。", "祖先查询", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            AncestorTreeView.Items.Add(CreateTreeViewItem(node, expandAll: true));
+            await InitLazyAncestorTreeAsync(treeId, memberId);
         }
         catch (Exception ex)
         {
@@ -295,30 +282,440 @@ public partial class ClanManagePage : Page
         }
     }
 
-    private static TreeViewItem CreateTreeViewItem(MemberTreeNodeDto node, bool expandAll = false)
+    private void PageRoot_Loaded(object sender, RoutedEventArgs e)
+    {
+        ScrollViewerHelper.ApplySmoothScrolling(MainPageScroll);
+        ScrollViewerHelper.ApplyToDescendants(PageRoot);
+    }
+
+    private async void MemberSearchButton_Click(object sender, RoutedEventArgs e)
+    {
+        var keyword = MemberSearchNameInput.GetActualText().Trim();
+        _memberSearchPage = 1;
+        await RunMemberSearchAsync(sender, string.IsNullOrEmpty(keyword) ? null : keyword, showEmptyDialog: true);
+    }
+
+    private async void MemberShowAllButton_Click(object sender, RoutedEventArgs e)
+    {
+        _memberSearchPage = 1;
+        await RunMemberSearchAsync(sender, keyword: null, showEmptyDialog: true);
+    }
+
+    private async void MemberSearchPrevPageButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_memberSearchPage <= 1) return;
+        _memberSearchPage--;
+        await LoadMemberSearchPageAsync(sender);
+    }
+
+    private async void MemberSearchNextPageButton_Click(object sender, RoutedEventArgs e)
+    {
+        var totalPages = GetMemberSearchTotalPages();
+        if (_memberSearchPage >= totalPages) return;
+        _memberSearchPage++;
+        await LoadMemberSearchPageAsync(sender);
+    }
+
+    private int GetMemberSearchTotalPages() =>
+        _memberSearchTotal <= 0 ? 1 : (int)Math.Ceiling(_memberSearchTotal / (double)MemberSearchPageSize);
+
+    private async Task RunMemberSearchAsync(object sender, string? keyword, bool showEmptyDialog)
+    {
+        var treeIdText = MemberSearchTreeIdInput.GetActualText().Trim();
+        if (!ulong.TryParse(treeIdText, out var treeId) || treeId == 0)
+        {
+            MessageBox.Show("请输入有效的族谱 ID。", "成员查找", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        _memberSearchTreeId = treeId;
+        _memberSearchKeyword = keyword;
+        await LoadMemberSearchPageAsync(sender, showEmptyDialog);
+    }
+
+    private async Task LoadMemberSearchPageAsync(object? triggerButton, bool showEmptyDialog = false)
+    {
+        var buttons = new List<Button>();
+        if (triggerButton is Button b) buttons.Add(b);
+        if (MemberSearchPrevPageButton != triggerButton) buttons.Add(MemberSearchPrevPageButton);
+        if (MemberSearchNextPageButton != triggerButton) buttons.Add(MemberSearchNextPageButton);
+
+        try
+        {
+            foreach (var btn in buttons) btn.IsEnabled = false;
+            MemberSearchResultsList.ItemsSource = null;
+            MemberSearchSummary.Text = "正在加载…";
+            Mouse.OverrideCursor = Cursors.Wait;
+
+            var result = await FetchMemberSearchPageAsync(_memberSearchTreeId, _memberSearchKeyword, _memberSearchPage);
+            _memberSearchTotal = result.Total;
+
+            var totalPages = GetMemberSearchTotalPages();
+            if (_memberSearchPage > totalPages)
+                _memberSearchPage = totalPages;
+            if (_memberSearchPage < 1)
+                _memberSearchPage = 1;
+
+            MemberSearchResultsList.ItemsSource = result.Items;
+            UpdateMemberSearchPaginationUi();
+
+            if (_memberSearchKeyword is null)
+            {
+                MemberSearchSummary.Text = _memberSearchTotal == 0
+                    ? $"族谱 {_memberSearchTreeId} 中暂无成员"
+                    : $"共 {_memberSearchTotal:N0} 人 · 当前第 {_memberSearchPage} / {totalPages} 页（每页 {MemberSearchPageSize} 人）";
+            }
+            else
+            {
+                MemberSearchSummary.Text = _memberSearchTotal == 0
+                    ? $"未找到姓名包含「{_memberSearchKeyword}」的成员"
+                    : $"匹配 {_memberSearchTotal:N0} 人 · 关键字「{_memberSearchKeyword}」· 第 {_memberSearchPage} / {totalPages} 页";
+            }
+
+            if (showEmptyDialog && result.Items.Count == 0)
+                MessageBox.Show(MemberSearchSummary.Text, "成员查找", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MemberSearchSummary.Text = "加载失败";
+            MessageBox.Show(ex.Message, "成员查找", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            Mouse.OverrideCursor = null;
+            foreach (var btn in buttons) btn.IsEnabled = true;
+            UpdateMemberSearchPaginationUi();
+        }
+    }
+
+    private void UpdateMemberSearchPaginationUi()
+    {
+        var totalPages = GetMemberSearchTotalPages();
+        MemberSearchPageInfo.Text = _memberSearchTotal <= 0
+            ? "无数据"
+            : $"第 {_memberSearchPage} / {totalPages} 页";
+        MemberSearchPrevPageButton.IsEnabled = _memberSearchPage > 1;
+        MemberSearchNextPageButton.IsEnabled = _memberSearchPage < totalPages && _memberSearchTotal > 0;
+    }
+
+    private async Task<MemberListResponseDto> FetchMemberSearchPageAsync(ulong treeId, string? keyword, int page)
+    {
+        var url = string.IsNullOrEmpty(keyword)
+            ? $"api/Members?treeId={treeId}&page={page}&pageSize={MemberSearchPageSize}"
+            : $"api/Members/search?treeId={treeId}&keyword={Uri.EscapeDataString(keyword)}&page={page}&pageSize={MemberSearchPageSize}";
+
+        var response = await _httpClient.GetAsync(url).ConfigureAwait(false);
+        var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException(ParseApiErrorMessage(body, response.StatusCode, "加载成员失败"));
+
+        var result = JsonSerializer.Deserialize<MemberListResponseDto>(body, JsonOptions);
+        if (result is not { Success: true })
+            throw new InvalidOperationException(result?.Message ?? "加载成员列表失败");
+
+        result.Items ??= new List<MemberDto>();
+        return result;
+    }
+
+    private async Task<List<MemberDto>> LoadMembersForTreeAsync(ulong treeId)
+    {
+        if (treeId == 0)
+            throw new InvalidOperationException("未选择族谱，请先点击「操作成员」。");
+
+        var response = await _httpClient.GetAsync($"api/Members?treeId={treeId}&page=1&pageSize=500");
+        var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException(ParseApiErrorMessage(body, response.StatusCode, "加载成员失败"));
+
+        MemberListResponseDto? result;
+        try
+        {
+            result = JsonSerializer.Deserialize<MemberListResponseDto>(body, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            throw new InvalidOperationException(ParseApiErrorMessage(body, response.StatusCode, "加载成员失败"));
+        }
+
+        if (result is not { Success: true })
+            throw new InvalidOperationException(result?.Message ?? "加载成员列表失败");
+
+        return result.Items ?? new List<MemberDto>();
+    }
+
+    private static string ParseApiErrorMessage(string body, System.Net.HttpStatusCode statusCode, string prefix)
+    {
+        if (!string.IsNullOrWhiteSpace(body))
+        {
+            try
+            {
+                var err = JsonSerializer.Deserialize<ApiActionResponseDto>(body, JsonOptions);
+                if (!string.IsNullOrWhiteSpace(err?.Message))
+                    return err.Message;
+            }
+            catch
+            {
+                // 非 JSON（如旧版 API 返回的 MySql 异常纯文本）
+            }
+
+            var trimmed = body.Trim();
+            if (trimmed.Length > 200)
+                trimmed = trimmed[..200] + "…";
+            if (!string.IsNullOrEmpty(trimmed))
+                return $"{prefix}（HTTP {(int)statusCode}）：{trimmed}";
+        }
+
+        return $"{prefix}（HTTP {(int)statusCode}）";
+    }
+
+    private async Task LoadMembersIntoListAsync(ListBox membersList)
+    {
+        try
+        {
+            var items = await LoadMembersForTreeAsync(_currentTreeId).ConfigureAwait(false);
+            await membersList.Dispatcher.InvokeAsync(() =>
+            {
+                membersList.ItemsSource = items;
+                membersList.DisplayMemberPath = "FullName";
+            });
+        }
+        catch (Exception ex)
+        {
+            await membersList.Dispatcher.InvokeAsync(() =>
+                MessageBox.Show(ex.Message, "错误", MessageBoxButton.OK, MessageBoxImage.Error));
+        }
+    }
+
+    private static bool TryParseActionResponse(HttpResponseMessage response, string body, out string? errorMessage)
+    {
+        ApiActionResponseDto? result = null;
+        try
+        {
+            result = JsonSerializer.Deserialize<ApiActionResponseDto>(body, JsonOptions);
+        }
+        catch
+        {
+            // 非 JSON 响应
+        }
+
+        if (response.IsSuccessStatusCode && (result is null || result.Success))
+        {
+            errorMessage = null;
+            return true;
+        }
+
+        errorMessage = result?.Message ?? $"请求失败（HTTP {(int)response.StatusCode}）";
+        return false;
+    }
+
+    private sealed class LazyTreeNodeTag
+    {
+        public required ulong TreeId { get; init; }
+        public required ulong MemberId { get; init; }
+        public required bool IsBranch { get; init; }
+        public bool ChildrenLoaded { get; set; }
+    }
+
+    private async Task InitLazyBranchTreeAsync(ulong treeId, ulong rootMemberId)
+    {
+        BranchTreeView.Items.Clear();
+        BranchQueryHint.Text = "正在加载根节点…";
+
+        var root = await FetchMemberAsync(treeId, rootMemberId);
+        if (root is null)
+        {
+            BranchQueryHint.Text = "";
+            MessageBox.Show("未找到根成员。", "分支预览", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var children = await FetchChildrenAsync(treeId, rootMemberId);
+        var rootSummary = new MemberTreeNodeSummaryDto
+        {
+            MemberId = root.MemberId,
+            FullName = root.FullName,
+            Gender = root.Gender,
+            Generation = root.Generation,
+            Relation = "当前成员",
+            HasMore = children.Count > 0
+        };
+
+        var rootItem = CreateBranchTreeItem(treeId, rootSummary, childrenLoaded: true);
+        foreach (var child in children)
+            rootItem.Items.Add(CreateBranchTreeItem(treeId, child));
+
+        BranchTreeView.Items.Add(rootItem);
+        rootItem.IsExpanded = true;
+        BranchQueryHint.Text =
+            $"已显示根节点及 {children.Count} 位直系子女。点击带「▸」的节点可继续展开查看该支全部后代。";
+    }
+
+    private async Task InitLazyAncestorTreeAsync(ulong treeId, ulong memberId)
+    {
+        AncestorTreeView.Items.Clear();
+        AncestorQueryHint.Text = "正在加载…";
+
+        var member = await FetchMemberAsync(treeId, memberId);
+        if (member is null)
+        {
+            AncestorQueryHint.Text = "";
+            MessageBox.Show("未找到成员。", "祖先查询", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var parents = await FetchParentsAsync(treeId, memberId);
+        var rootSummary = new MemberTreeNodeSummaryDto
+        {
+            MemberId = member.MemberId,
+            FullName = member.FullName,
+            Gender = member.Gender,
+            Generation = member.Generation,
+            Relation = "当前成员",
+            HasMore = parents.Count > 0
+        };
+
+        var rootItem = CreateAncestorTreeItem(treeId, rootSummary, childrenLoaded: true);
+        foreach (var parent in parents)
+            rootItem.Items.Add(CreateAncestorTreeItem(treeId, parent));
+
+        AncestorTreeView.Items.Add(rootItem);
+        rootItem.IsExpanded = true;
+        AncestorQueryHint.Text =
+            $"已显示本人及 {parents.Count} 位父母。点击带「▸」的节点可继续向上展开查看全部祖先。";
+    }
+
+    private async Task<MemberDto?> FetchMemberAsync(ulong treeId, ulong memberId)
+    {
+        var response = await _httpClient.GetAsync($"api/Members/{memberId}?treeId={treeId}");
+        var body = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<MemberSingleResponseDto>(body, JsonOptions);
+        return result is { Success: true, Data: { } data } ? data : null;
+    }
+
+    private async Task<List<MemberTreeNodeSummaryDto>> FetchChildrenAsync(ulong treeId, ulong memberId)
+    {
+        var response = await _httpClient.GetAsync($"api/Members/children?treeId={treeId}&memberId={memberId}");
+        var body = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<MemberTreeNodesResponseDto>(body, JsonOptions);
+        return result is { Success: true } ? result.Items : [];
+    }
+
+    private async Task<List<MemberTreeNodeSummaryDto>> FetchParentsAsync(ulong treeId, ulong memberId)
+    {
+        var response = await _httpClient.GetAsync($"api/Members/parents?treeId={treeId}&memberId={memberId}");
+        var body = await response.Content.ReadAsStringAsync();
+        var result = JsonSerializer.Deserialize<MemberTreeNodesResponseDto>(body, JsonOptions);
+        return result is { Success: true } ? result.Items : [];
+    }
+
+    private TreeViewItem CreateBranchTreeItem(ulong treeId, MemberTreeNodeSummaryDto node, bool childrenLoaded = false)
+    {
+        var item = new TreeViewItem { Header = FormatTreeHeader(node) };
+        if (node.HasMore && !childrenLoaded)
+        {
+            item.Tag = new LazyTreeNodeTag { TreeId = treeId, MemberId = node.MemberId, IsBranch = true };
+            item.Items.Add(CreateTreePlaceholderItem());
+            item.Expanded += LazyBranchItem_Expanded;
+        }
+
+        return item;
+    }
+
+    private TreeViewItem CreateAncestorTreeItem(ulong treeId, MemberTreeNodeSummaryDto node, bool childrenLoaded = false)
+    {
+        var item = new TreeViewItem { Header = FormatTreeHeader(node) };
+        if (node.HasMore && !childrenLoaded)
+        {
+            item.Tag = new LazyTreeNodeTag { TreeId = treeId, MemberId = node.MemberId, IsBranch = false };
+            item.Items.Add(CreateTreePlaceholderItem());
+            item.Expanded += LazyAncestorItem_Expanded;
+        }
+
+        return item;
+    }
+
+    private static TreeViewItem CreateTreePlaceholderItem() =>
+        new() { Header = "▸ 点击展开", IsEnabled = false };
+
+    private static string FormatTreeHeader(MemberTreeNodeSummaryDto node)
     {
         var header = string.IsNullOrWhiteSpace(node.Relation)
             ? node.FullName
             : $"{node.Relation}: {node.FullName}";
-
         if (node.Generation.HasValue)
             header += $" · 世代 {node.Generation}";
         if (!string.IsNullOrWhiteSpace(node.Gender))
             header += $" · {node.Gender}";
-
         header += $" (ID: {node.MemberId})";
+        if (node.HasMore)
+            header += " ▸";
+        return header;
+    }
 
-        var item = new TreeViewItem { Header = header };
-        foreach (var child in node.Children ?? [])
+    private async void LazyBranchItem_Expanded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not TreeViewItem item || item.Tag is not LazyTreeNodeTag tag || tag.ChildrenLoaded)
+            return;
+
+        tag.ChildrenLoaded = true;
+        item.Expanded -= LazyBranchItem_Expanded;
+        item.Items.Clear();
+        item.Items.Add(new TreeViewItem { Header = "加载中…", IsEnabled = false });
+
+        try
         {
-            var childItem = CreateTreeViewItem(child, expandAll);
-            item.Items.Add(childItem);
+            var children = await FetchChildrenAsync(tag.TreeId, tag.MemberId);
+            item.Items.Clear();
+            if (children.Count == 0)
+            {
+                item.Items.Add(new TreeViewItem { Header = "（无子女）", IsEnabled = false });
+                return;
+            }
+
+            foreach (var child in children)
+                item.Items.Add(CreateBranchTreeItem(tag.TreeId, child));
         }
+        catch (Exception ex)
+        {
+            item.Items.Clear();
+            item.Items.Add(new TreeViewItem { Header = $"加载失败: {ex.Message}", IsEnabled = false });
+            tag.ChildrenLoaded = false;
+            item.Expanded += LazyBranchItem_Expanded;
+        }
+    }
 
-        if (expandAll && item.Items.Count > 0)
-            item.IsExpanded = true;
+    private async void LazyAncestorItem_Expanded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not TreeViewItem item || item.Tag is not LazyTreeNodeTag tag || tag.ChildrenLoaded)
+            return;
 
-        return item;
+        tag.ChildrenLoaded = true;
+        item.Expanded -= LazyAncestorItem_Expanded;
+        item.Items.Clear();
+        item.Items.Add(new TreeViewItem { Header = "加载中…", IsEnabled = false });
+
+        try
+        {
+            var parents = await FetchParentsAsync(tag.TreeId, tag.MemberId);
+            item.Items.Clear();
+            if (parents.Count == 0)
+            {
+                item.Items.Add(new TreeViewItem { Header = "（无父母记录）", IsEnabled = false });
+                return;
+            }
+
+            foreach (var parent in parents)
+                item.Items.Add(CreateAncestorTreeItem(tag.TreeId, parent));
+        }
+        catch (Exception ex)
+        {
+            item.Items.Clear();
+            item.Items.Add(new TreeViewItem { Header = $"加载失败: {ex.Message}", IsEnabled = false });
+            tag.ChildrenLoaded = false;
+            item.Expanded += LazyAncestorItem_Expanded;
+        }
     }
 
     private void CreateClanCancelButton_Click(object sender, RoutedEventArgs e)
@@ -328,7 +725,16 @@ public partial class ClanManagePage : Page
 
     private void InviteButton_Click(object sender, RoutedEventArgs e)
     {
-        InvitePopup.IsOpen = true;
+        if (sender is Button { DataContext: ClanInfo clan })
+        {
+            _currentTreeId = ulong.Parse(clan.Id);
+            InviteUserIdInput.Text = "";
+            OpenCenteredPopup(InvitePopup);
+        }
+        else
+        {
+            MessageBox.Show("请先选择要邀请管理的族谱。", "邀请管理", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
     }
 
     private void MemberOperationButton_Click(object sender, RoutedEventArgs e)
@@ -336,8 +742,48 @@ public partial class ClanManagePage : Page
         if (sender is Button button && button.DataContext is ClanInfo clan)
         {
             _currentTreeId = ulong.Parse(clan.Id);
-            MemberPopup.IsOpen = true;
+            OpenCenteredPopup(MemberPopup);
         }
+    }
+
+    private static readonly IntPtr HwndTopMost = new(-1);
+    private const uint SwpNomove = 0x0002;
+    private const uint SwpNosize = 0x0001;
+    private const uint SwpNoActivate = 0x0010;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
+
+    private void OpenCenteredPopup(Popup popup)
+    {
+        void OnOpened(object? s, EventArgs e)
+        {
+            popup.Opened -= OnOpened;
+            if (popup.Child != null)
+                popup.Dispatcher.BeginInvoke(() => SetPopupTopmost(popup), DispatcherPriority.Loaded);
+        }
+
+        popup.Opened -= OnOpened;
+        popup.Opened += OnOpened;
+        popup.PlacementTarget = PageRoot;
+        popup.Placement = PlacementMode.Center;
+        popup.HorizontalOffset = 0;
+        popup.VerticalOffset = 0;
+        popup.IsOpen = true;
+    }
+
+    private static void SetPopupTopmost(Popup popup)
+    {
+        if (popup.Child is not Visual visual)
+            return;
+        if (PresentationSource.FromVisual(visual) is HwndSource { Handle: var handle } && handle != IntPtr.Zero)
+            SetWindowPos(handle, HwndTopMost, 0, 0, 0, 0, SwpNomove | SwpNosize | SwpNoActivate);
+    }
+
+    private void MemberPopupClose_Click(object sender, RoutedEventArgs e)
+    {
+        MemberPopup.IsOpen = false;
+        MemberInfoPanel.Children.Clear();
     }
 
     private void AddMember_Click(object sender, RoutedEventArgs e)
@@ -360,7 +806,15 @@ public partial class ClanManagePage : Page
 
     private void DeleteButton_Click(object sender, RoutedEventArgs e)
     {
-        DeleteConfirmPopup.IsOpen = true;
+        if (sender is Button { DataContext: ClanInfo clan })
+        {
+            _currentTreeId = ulong.Parse(clan.Id);
+            OpenCenteredPopup(DeleteConfirmPopup);
+        }
+        else
+        {
+            MessageBox.Show("请先选择要删除的族谱。", "删除族谱", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
     }
 
     private void BuildAddMemberForm()
@@ -431,16 +885,15 @@ public partial class ClanManagePage : Page
             {
                 var response = await _httpClient.PostAsJsonAsync("api/Members", request);
                 var body = await response.Content.ReadAsStringAsync();
-                var result = JsonSerializer.Deserialize<Dictionary<string, object>>(body, JsonOptions);
 
-                if (result != null && result.ContainsKey("success") && (bool)result["success"])
+                if (TryParseActionResponse(response, body, out var error))
                 {
                     MessageBox.Show("成员添加成功", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
                     MemberPopup.IsOpen = false;
                 }
                 else
                 {
-                    MessageBox.Show(result?["message"]?.ToString() ?? "添加失败", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show(error ?? "添加失败", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
             catch (Exception ex)
@@ -457,36 +910,19 @@ public partial class ClanManagePage : Page
     {
         var stackPanel = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
 
-        // Load members list
-        var membersList = new ListBox { Height = 200, Margin = new Thickness(0, 0, 0, 10) };
-        stackPanel.Children.Add(new TextBlock { Text = "选择要修改的成员", FontSize = 14, Margin = new Thickness(0, 0, 0, 5) });
-        stackPanel.Children.Add(membersList);
-
-        // Load members
-        Task.Run(async () =>
+        stackPanel.Children.Add(new TextBlock
         {
-            try
-            {
-                var response = await _httpClient.GetAsync($"api/Members?treeId={_currentTreeId}&page=1&pageSize=100");
-                var body = await response.Content.ReadAsStringAsync();
-                var result = JsonSerializer.Deserialize<MemberListResponseDto>(body, JsonOptions);
-
-                if (result != null && result.Success)
-                {
-                    Dispatcher.Invoke(() =>
-                    {
-                        membersList.ItemsSource = result.Items;
-                        membersList.DisplayMemberPath = "FullName";
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                Dispatcher.Invoke(() => MessageBox.Show($"加载成员失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error));
-            }
+            Text = "1. 选择成员  2. 修改下方信息  3. 点击「确认修改完成」",
+            FontSize = 13,
+            Foreground = new SolidColorBrush(Color.FromRgb(138, 126, 114)),
+            Margin = new Thickness(0, 0, 0, 10)
         });
 
-        // Form fields (initially hidden)
+        var membersList = new ListBox { Height = 140, Margin = new Thickness(0, 0, 0, 10) };
+        stackPanel.Children.Add(new TextBlock { Text = "选择要修改的成员", FontSize = 14, Margin = new Thickness(0, 0, 0, 5) });
+        stackPanel.Children.Add(membersList);
+        _ = LoadMembersIntoListAsync(membersList);
+
         var formPanel = new StackPanel { Visibility = Visibility.Collapsed };
 
         var fullNameBox = new TextBox { Style = (Style)FindResource("InputBoxStyle"), Margin = new Thickness(0, 0, 0, 10) };
@@ -502,7 +938,7 @@ public partial class ClanManagePage : Page
 
         formPanel.Children.Add(new TextBlock { Text = "姓名", FontSize = 14, Margin = new Thickness(0, 0, 0, 5) });
         formPanel.Children.Add(fullNameBox);
-        formPanel.Children.Add(new TextBlock { Text = "性别", FontSize = 14, Margin = new Thickness(0, 0, 0, 5) });
+        formPanel.Children.Add(new TextBlock { Text = "性别 (M/F)", FontSize = 14, Margin = new Thickness(0, 0, 0, 5) });
         formPanel.Children.Add(genderCombo);
         formPanel.Children.Add(new TextBlock { Text = "出生日期", FontSize = 14, Margin = new Thickness(0, 0, 0, 5) });
         formPanel.Children.Add(birthDatePicker);
@@ -510,71 +946,141 @@ public partial class ClanManagePage : Page
         formPanel.Children.Add(deathDatePicker);
         formPanel.Children.Add(new TextBlock { Text = "传记", FontSize = 14, Margin = new Thickness(0, 0, 0, 5) });
         formPanel.Children.Add(biographyBox);
-        formPanel.Children.Add(new TextBlock { Text = "父亲成员ID", FontSize = 14, Margin = new Thickness(0, 0, 0, 5) });
+        formPanel.Children.Add(new TextBlock { Text = "父亲成员ID (可选)", FontSize = 14, Margin = new Thickness(0, 0, 0, 5) });
         formPanel.Children.Add(fatherIdBox);
-        formPanel.Children.Add(new TextBlock { Text = "母亲成员ID", FontSize = 14, Margin = new Thickness(0, 0, 0, 5) });
+        formPanel.Children.Add(new TextBlock { Text = "母亲成员ID (可选)", FontSize = 14, Margin = new Thickness(0, 0, 0, 5) });
         formPanel.Children.Add(motherIdBox);
-        formPanel.Children.Add(new TextBlock { Text = "世代", FontSize = 14, Margin = new Thickness(0, 0, 0, 5) });
+        formPanel.Children.Add(new TextBlock { Text = "世代 (可选)", FontSize = 14, Margin = new Thickness(0, 0, 0, 5) });
         formPanel.Children.Add(generationBox);
-
-        var updateButton = new Button { Content = "更新成员", Style = (Style)FindResource("OperationButtonStyle"), Margin = new Thickness(0, 10, 0, 0) };
-        formPanel.Children.Add(updateButton);
 
         stackPanel.Children.Add(formPanel);
 
-        // Handle selection
-        membersList.SelectionChanged += (s, e) =>
+        var actionRow = new StackPanel
         {
-            if (membersList.SelectedItem is MemberDto member)
-            {
-                fullNameBox.Text = member.FullName;
-                genderCombo.SelectedItem = member.Gender;
-                birthDatePicker.SelectedDate = member.BirthDate;
-                deathDatePicker.SelectedDate = member.DeathDate;
-                biographyBox.Text = member.Biography ?? "";
-                fatherIdBox.Text = member.FatherMemberId?.ToString() ?? "";
-                motherIdBox.Text = member.MotherMemberId?.ToString() ?? "";
-                generationBox.Text = member.Generation?.ToString() ?? "";
-                formPanel.Visibility = Visibility.Visible;
-            }
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 16, 0, 0),
+            Visibility = Visibility.Collapsed
         };
 
-        // Update button click
-        updateButton.Click += async (s, e) =>
+        var confirmButton = new Button
         {
-            if (membersList.SelectedItem is not MemberDto member) return;
+            Content = "确认修改完成",
+            Style = (Style)FindResource("OperationButtonStyle"),
+            Width = 120,
+            IsEnabled = false
+        };
+        var cancelButton = new Button
+        {
+            Content = "取消",
+            Style = (Style)FindResource("OperationButtonStyle"),
+            Margin = new Thickness(16, 0, 0, 0),
+            Width = 80
+        };
+        actionRow.Children.Add(confirmButton);
+        actionRow.Children.Add(cancelButton);
+        stackPanel.Children.Add(actionRow);
+
+        static void SelectGender(ComboBox combo, string gender) =>
+            combo.SelectedIndex = gender.Equals("F", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+
+        membersList.SelectionChanged += (_, _) =>
+        {
+            if (membersList.SelectedItem is not MemberDto member)
+            {
+                formPanel.Visibility = Visibility.Collapsed;
+                actionRow.Visibility = Visibility.Collapsed;
+                confirmButton.IsEnabled = false;
+                return;
+            }
+
+            fullNameBox.Text = member.FullName;
+            SelectGender(genderCombo, member.Gender);
+            birthDatePicker.SelectedDate = member.BirthDate;
+            deathDatePicker.SelectedDate = member.DeathDate;
+            biographyBox.Text = member.Biography ?? "";
+            fatherIdBox.Text = member.FatherMemberId?.ToString() ?? "";
+            motherIdBox.Text = member.MotherMemberId?.ToString() ?? "";
+            generationBox.Text = member.Generation?.ToString() ?? "";
+            formPanel.Visibility = Visibility.Visible;
+            actionRow.Visibility = Visibility.Visible;
+            confirmButton.IsEnabled = true;
+        };
+
+        cancelButton.Click += (_, _) => MemberPopupClose_Click(cancelButton, new RoutedEventArgs());
+
+        confirmButton.Click += async (_, _) =>
+        {
+            if (membersList.SelectedItem is not MemberDto member)
+            {
+                MessageBox.Show("请先选择要修改的成员。", "修改信息", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(fullNameBox.Text))
+            {
+                MessageBox.Show("姓名不能为空。", "修改信息", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (genderCombo.SelectedItem is not string gender)
+            {
+                MessageBox.Show("请选择性别。", "修改信息", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            ulong? fatherId = null;
+            ulong? motherId = null;
+            uint? generation = null;
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(fatherIdBox.Text))
+                    fatherId = ulong.Parse(fatherIdBox.Text.Trim());
+                if (!string.IsNullOrWhiteSpace(motherIdBox.Text))
+                    motherId = ulong.Parse(motherIdBox.Text.Trim());
+                if (!string.IsNullOrWhiteSpace(generationBox.Text))
+                    generation = uint.Parse(generationBox.Text.Trim());
+            }
+            catch (FormatException)
+            {
+                MessageBox.Show("父亲/母亲 ID 或世代必须是数字。", "修改信息", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
 
             var request = new MemberUpdateRequest
             {
-                FullName = fullNameBox.Text,
-                Gender = genderCombo.SelectedItem.ToString()!,
+                FullName = fullNameBox.Text.Trim(),
+                Gender = gender,
                 BirthDate = birthDatePicker.SelectedDate,
                 DeathDate = deathDatePicker.SelectedDate,
-                Biography = string.IsNullOrWhiteSpace(biographyBox.Text) ? null : biographyBox.Text,
-                FatherMemberId = string.IsNullOrWhiteSpace(fatherIdBox.Text) ? null : ulong.Parse(fatherIdBox.Text),
-                MotherMemberId = string.IsNullOrWhiteSpace(motherIdBox.Text) ? null : ulong.Parse(motherIdBox.Text),
-                Generation = string.IsNullOrWhiteSpace(generationBox.Text) ? null : uint.Parse(generationBox.Text)
+                Biography = string.IsNullOrWhiteSpace(biographyBox.Text) ? null : biographyBox.Text.Trim(),
+                FatherMemberId = fatherId,
+                MotherMemberId = motherId,
+                Generation = generation
             };
 
             try
             {
+                confirmButton.IsEnabled = false;
                 var response = await _httpClient.PutAsJsonAsync($"api/Members/{_currentTreeId}/{member.MemberId}", request);
                 var body = await response.Content.ReadAsStringAsync();
-                var result = JsonSerializer.Deserialize<Dictionary<string, object>>(body, JsonOptions);
 
-                if (result != null && result.ContainsKey("success") && (bool)result["success"])
+                if (TryParseActionResponse(response, body, out var error))
                 {
-                    MessageBox.Show("成员更新成功", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
-                    MemberPopup.IsOpen = false;
+                    MessageBox.Show("成员信息已保存。", "修改完成", MessageBoxButton.OK, MessageBoxImage.Information);
+                    await LoadMembersIntoListAsync(membersList);
                 }
                 else
                 {
-                    MessageBox.Show(result?["message"]?.ToString() ?? "更新失败", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show(error ?? "更新失败", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"更新失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                confirmButton.IsEnabled = membersList.SelectedItem != null;
             }
         };
 
@@ -591,28 +1097,7 @@ public partial class ClanManagePage : Page
         stackPanel.Children.Add(membersList);
 
         // Load members
-        Task.Run(async () =>
-        {
-            try
-            {
-                var response = await _httpClient.GetAsync($"api/Members?treeId={_currentTreeId}&page=1&pageSize=100");
-                var body = await response.Content.ReadAsStringAsync();
-                var result = JsonSerializer.Deserialize<MemberListResponseDto>(body, JsonOptions);
-
-                if (result != null && result.Success)
-                {
-                    Dispatcher.Invoke(() =>
-                    {
-                        membersList.ItemsSource = result.Items;
-                        membersList.DisplayMemberPath = "FullName";
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                Dispatcher.Invoke(() => MessageBox.Show($"加载成员失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error));
-            }
-        });
+        _ = LoadMembersIntoListAsync(membersList);
 
         var deleteButton = new Button { Content = "删除成员", Style = (Style)FindResource("OperationButtonStyle"), Margin = new Thickness(0, 10, 0, 0), IsEnabled = false };
         stackPanel.Children.Add(deleteButton);
@@ -635,16 +1120,15 @@ public partial class ClanManagePage : Page
             {
                 var response = await _httpClient.DeleteAsync($"api/Members/{_currentTreeId}/{member.MemberId}");
                 var body = await response.Content.ReadAsStringAsync();
-                var responseResult = JsonSerializer.Deserialize<Dictionary<string, object>>(body, JsonOptions);
 
-                if (responseResult != null && responseResult.ContainsKey("success") && (bool)responseResult["success"])
+                if (TryParseActionResponse(response, body, out var error))
                 {
                     MessageBox.Show("成员删除成功", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
-                    MemberPopup.IsOpen = false;
+                    await LoadMembersIntoListAsync(membersList);
                 }
                 else
                 {
-                    MessageBox.Show(responseResult?["message"]?.ToString() ?? "删除失败", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show(error ?? "删除失败", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
             catch (Exception ex)
@@ -656,20 +1140,38 @@ public partial class ClanManagePage : Page
         MemberInfoPanel.Children.Add(stackPanel);
     }
 
-    private void MemberToolbarDeleteConfirm_Click(object sender, RoutedEventArgs e)
-    {
-        MemberPopup.IsOpen = false;
-    }
-
-    private void MemberToolbarDeleteCancel_Click(object sender, RoutedEventArgs e)
-    {
-        MemberPopup.IsOpen = false;
-    }
-
-    private void ClanDeleteConfirm_Click(object sender, RoutedEventArgs e)
+    private async void ClanDeleteConfirm_Click(object sender, RoutedEventArgs e)
     {
         DeleteConfirmPopup.IsOpen = false;
-        MessageBox.Show("删除族谱接口尚未接入后端。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+
+        if (_currentTreeId == 0)
+        {
+            MessageBox.Show("未选择族谱。", "删除族谱", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            var response = await _httpClient.DeleteAsync($"api/familytrees/{_currentTreeId}?userId={_userId}");
+            var body = await response.Content.ReadAsStringAsync();
+            var result = JsonSerializer.Deserialize<FamilyTreeInviteResponseDto>(body, JsonOptions);
+
+            if (TryParseActionResponse(response, body, out var error))
+            {
+                MessageBox.Show(result?.Message ?? "族谱已删除", "删除族谱", MessageBoxButton.OK, MessageBoxImage.Information);
+                _currentTreeId = 0;
+                await LoadUserFamilyTreesAsync();
+            }
+            else
+            {
+                MessageBox.Show(error ?? result?.Message ?? "删除失败", "删除族谱",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"删除失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private void ClanDeleteCancel_Click(object sender, RoutedEventArgs e)
@@ -677,9 +1179,45 @@ public partial class ClanManagePage : Page
         DeleteConfirmPopup.IsOpen = false;
     }
 
-    private void InviteConfirmButton_Click(object sender, RoutedEventArgs e)
+    private async void InviteConfirmButton_Click(object sender, RoutedEventArgs e)
     {
-        InvitePopup.IsOpen = false;
+        var idText = InviteUserIdInput.GetActualText().Trim();
+        if (!ulong.TryParse(idText, out var inviteeUserId) || inviteeUserId == 0)
+        {
+            MessageBox.Show("请输入有效的被邀请人用户 ID（数字）。", "邀请管理", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        if (_currentTreeId == 0)
+        {
+            MessageBox.Show("未选择族谱，请从「我创建的族谱」列表点击「邀请管理」。", "邀请管理", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            var response = await _httpClient.PostAsJsonAsync(
+                $"api/familytrees/{_currentTreeId}/invite?ownerUserId={_userId}",
+                new { inviteeUserId });
+            var body = await response.Content.ReadAsStringAsync();
+            var result = JsonSerializer.Deserialize<FamilyTreeInviteResponseDto>(body, JsonOptions);
+
+            if (result is { Success: true })
+            {
+                MessageBox.Show(result.Message ?? "邀请成功", "邀请管理", MessageBoxButton.OK, MessageBoxImage.Information);
+                InvitePopup.IsOpen = false;
+                InviteUserIdInput.Text = "";
+            }
+            else
+            {
+                MessageBox.Show(result?.Message ?? $"邀请失败（HTTP {(int)response.StatusCode}）", "邀请管理",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"邀请失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private void InviteCancelButton_Click(object sender, RoutedEventArgs e)

@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Shapes;
+using FamilyTreeApp.Helpers;
 using FamilyTreeApp.Models;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -269,6 +270,46 @@ namespace FamilyTreeApp.Pages
             return card;
         }
 
+        private void Page_Loaded(object sender, RoutedEventArgs e)
+        {
+            ScrollViewerHelper.ApplySmoothScrolling(MainScroll);
+        }
+
+        private static string FormatPercent(int part, int total) =>
+            total <= 0 ? "0.00%" : $"{(double)part / total * 100:F2}%";
+
+        private static string FormatCount(int count) => count.ToString("N0");
+
+        private static UIElement CreateLegendRow(Color dotColor, string label, int count, int total, double topMargin = 0)
+        {
+            var row = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Margin = new Thickness(0, topMargin, 0, 0)
+            };
+
+            var dot = new Ellipse
+            {
+                Width = 10,
+                Height = 10,
+                Fill = new SolidColorBrush(dotColor),
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 3, 8, 0)
+            };
+
+            var text = new TextBlock
+            {
+                Text = $"{label}  {FormatCount(count)} 人  ({FormatPercent(count, total)})",
+                FontSize = 13,
+                Foreground = new SolidColorBrush(Color.FromRgb(100, 90, 78)),
+                TextWrapping = TextWrapping.Wrap
+            };
+
+            row.Children.Add(dot);
+            row.Children.Add(text);
+            return row;
+        }
+
         // ────────── 族谱信息弹窗 ──────────
 
         private void ShowClanInfoPopup(ClanInfo clan, Border card)
@@ -306,51 +347,30 @@ namespace FamilyTreeApp.Pages
                 Margin = new Thickness(0, 0, 0, 18)
             });
 
-            // 饼状图
-            var pieChart = CreatePieChart(clan, 130);
+            // 饼状图（扇区标注人数与占比）
+            var pieChart = CreatePieChart(clan, 168);
             pieChart.HorizontalAlignment = HorizontalAlignment.Center;
             panel.Children.Add(pieChart);
 
-            // 图例
+            // 图例（纵向，避免大数字被截断）
             var legend = new StackPanel
             {
-                Orientation = Orientation.Horizontal,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Margin = new Thickness(0, 16, 0, 0)
+                Margin = new Thickness(0, 16, 0, 0),
+                HorizontalAlignment = HorizontalAlignment.Stretch
             };
 
-            // 男性图例
-            var maleDot = new Ellipse
-            {
-                Width = 10,
-                Height = 10,
-                Fill = new SolidColorBrush(Color.FromRgb(184, 101, 58))
-            };
-            legend.Children.Add(maleDot);
-            legend.Children.Add(new TextBlock
-            {
-                Text = $" 男性 {clan.MaleCount}人",
-                FontSize = 13,
-                Foreground = new SolidColorBrush(Color.FromRgb(100, 90, 78)),
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 20, 0)
-            });
+            legend.Children.Add(CreateLegendRow(
+                Color.FromRgb(184, 101, 58),
+                "男性",
+                clan.MaleCount,
+                clan.TotalMembers));
 
-            // 女性图例
-            var femaleDot = new Ellipse
-            {
-                Width = 10,
-                Height = 10,
-                Fill = new SolidColorBrush(Color.FromRgb(196, 168, 130))
-            };
-            legend.Children.Add(femaleDot);
-            legend.Children.Add(new TextBlock
-            {
-                Text = $" 女性 {clan.FemaleCount}人",
-                FontSize = 13,
-                Foreground = new SolidColorBrush(Color.FromRgb(100, 90, 78)),
-                VerticalAlignment = VerticalAlignment.Center
-            });
+            legend.Children.Add(CreateLegendRow(
+                Color.FromRgb(196, 168, 130),
+                "女性",
+                clan.FemaleCount,
+                clan.TotalMembers,
+                topMargin: 10));
 
             panel.Children.Add(legend);
 
@@ -372,7 +392,7 @@ namespace FamilyTreeApp.Pages
 
             double cx = size / 2;
             double cy = size / 2;
-            double radius = size / 2 - 6;
+            double radius = size / 2 - 8;
 
             double maleAngle = (double)clan.MaleCount / clan.TotalMembers * 360;
 
@@ -382,6 +402,13 @@ namespace FamilyTreeApp.Pages
                 canvas.Children.Add(CreatePieSlice(
                     cx, cy, radius, 0, maleAngle,
                     new SolidColorBrush(Color.FromRgb(184, 101, 58))));
+
+                if (maleAngle >= 12)
+                {
+                    AddSliceLabel(canvas, cx, cy, radius * 0.68, maleAngle / 2,
+                        FormatCount(clan.MaleCount),
+                        FormatPercent(clan.MaleCount, clan.TotalMembers));
+                }
             }
 
             // 女性扇形
@@ -390,37 +417,73 @@ namespace FamilyTreeApp.Pages
                 canvas.Children.Add(CreatePieSlice(
                     cx, cy, radius, maleAngle, 360,
                     new SolidColorBrush(Color.FromRgb(196, 168, 130))));
+
+                var femaleAngle = 360 - maleAngle;
+                if (femaleAngle >= 12)
+                {
+                    AddSliceLabel(canvas, cx, cy, radius * 0.68, maleAngle + femaleAngle / 2,
+                        FormatCount(clan.FemaleCount),
+                        FormatPercent(clan.FemaleCount, clan.TotalMembers));
+                }
             }
 
-            // 中心白色圆（环形效果）
+            // 中心白色圆（环形效果）+ 总人数
+            var innerSize = radius * 0.52;
             var innerCircle = new Ellipse
             {
-                Width = radius * 0.55,
-                Height = radius * 0.55,
+                Width = innerSize,
+                Height = innerSize,
                 Fill = new SolidColorBrush(Colors.White)
             };
-            innerCircle.SetValue(Canvas.LeftProperty, cx - radius * 0.55 / 2);
-            innerCircle.SetValue(Canvas.TopProperty, cy - radius * 0.55 / 2);
+            innerCircle.SetValue(Canvas.LeftProperty, cx - innerSize / 2);
+            innerCircle.SetValue(Canvas.TopProperty, cy - innerSize / 2);
             canvas.Children.Add(innerCircle);
 
-            // 中心百分比文字
-            double malePercent = Math.Round((double)clan.MaleCount / clan.TotalMembers * 100);
-            var percentText = new TextBlock
+            var centerText = new TextBlock
             {
-                Text = $"{malePercent}%",
-                FontSize = 12,
+                Text = "总计\n" + FormatCount(clan.TotalMembers),
+                FontSize = 10,
                 FontWeight = FontWeights.SemiBold,
-                Foreground = new SolidColorBrush(Color.FromRgb(184, 101, 58)),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
+                Foreground = new SolidColorBrush(Color.FromRgb(44, 34, 23)),
+                TextAlignment = TextAlignment.Center,
+                LineHeight = 13
             };
-            // 居中放置
-            var centerWrap = new Canvas { Width = size, Height = size };
-            percentText.SetValue(Canvas.LeftProperty, cx - 12);
-            percentText.SetValue(Canvas.TopProperty, cy - 8);
-            canvas.Children.Add(percentText);
+            centerText.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            centerText.SetValue(Canvas.LeftProperty, cx - centerText.DesiredSize.Width / 2);
+            centerText.SetValue(Canvas.TopProperty, cy - centerText.DesiredSize.Height / 2);
+            canvas.Children.Add(centerText);
 
             return canvas;
+        }
+
+        /// <summary>在扇区中部标注人数与占比（midAngleDeg：0° 为顶部，顺时针）</summary>
+        private static void AddSliceLabel(Canvas canvas, double cx, double cy, double labelRadius,
+            double midAngleDeg, string countText, string percentText)
+        {
+            var rad = (midAngleDeg - 90) * Math.PI / 180;
+            var x = cx + labelRadius * Math.Cos(rad);
+            var y = cy + labelRadius * Math.Sin(rad);
+
+            var label = new TextBlock
+            {
+                Text = $"{countText}\n{percentText}",
+                FontSize = 10,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Colors.White),
+                TextAlignment = TextAlignment.Center,
+                LineHeight = 12
+            };
+            label.Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Colors.Black,
+                BlurRadius = 4,
+                ShadowDepth = 0,
+                Opacity = 0.45
+            };
+            label.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            label.SetValue(Canvas.LeftProperty, x - label.DesiredSize.Width / 2);
+            label.SetValue(Canvas.TopProperty, y - label.DesiredSize.Height / 2);
+            canvas.Children.Add(label);
         }
 
         private Path CreatePieSlice(double cx, double cy, double r,

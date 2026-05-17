@@ -1,7 +1,10 @@
 ﻿<Page x:Class="FamilyTreeApp.Pages.HomePage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-      Title="首页" Background="#F5F1EB">
+      Title="首页" Background="#F5F1EB"
+      UseLayoutRounding="True"
+      TextOptions.TextFormattingMode="Display"
+      Loaded="Page_Loaded">
 
     <Grid>
         <Grid.RowDefinitions>
@@ -17,6 +20,8 @@
 
         <!-- 主内容区域 -->
         <ScrollViewer Grid.Row="1" x:Name="MainScroll" VerticalScrollBarVisibility="Auto"
+                      PanningMode="VerticalOnly"
+                      CanContentScroll="False"
                       ScrollChanged="MainScroll_ScrollChanged">
             <StackPanel>
 
@@ -70,7 +75,7 @@
                               Opacity="0.18" Color="#1A1714"/>
                 </Border.Effect>
                 <!-- 内层 Border：负责背景色和圆角 -->
-                <Border x:Name="PopupInnerBorder" Width="300" Background="#FFFFFF" 
+                <Border x:Name="PopupInnerBorder" MinWidth="360" MaxWidth="420" Background="#FFFFFF" 
                 CornerRadius="14" Padding="28,24">
                     <StackPanel x:Name="PopupContentPanel"/>
                 </Border>

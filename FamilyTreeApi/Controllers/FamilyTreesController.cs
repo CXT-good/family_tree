@@ -172,4 +172,98 @@ public class FamilyTreesController : ControllerBase
             ManagedTrees = managedTrees
         });
     }
+
+    /// <summary>邀请用户管理族谱（仅 owner 可操作，被邀请人获得 editor 角色）</summary>
+    [HttpPost("{treeId:long}/invite")]
+    public async Task<IActionResult> Invite(ulong treeId, [FromQuery] ulong ownerUserId, [FromBody] FamilyTreeInviteRequest request)
+    {
+        if (treeId == 0 || ownerUserId == 0)
+            return BadRequest(new FamilyTreeInviteResponse { Success = false, Message = "族谱或操作者无效" });
+
+        if (request.InviteeUserId == 0)
+            return BadRequest(new FamilyTreeInviteResponse { Success = false, Message = "被邀请人 ID 无效" });
+
+        if (request.InviteeUserId == ownerUserId)
+            return BadRequest(new FamilyTreeInviteResponse { Success = false, Message = "不能邀请自己" });
+
+        await using var conn = new MySqlConnection(_connectionString);
+        await conn.OpenAsync();
+
+        const string ownerSql = """
+            SELECT role
+            FROM tree_managers
+            WHERE tree_id = @treeId AND user_id = @ownerUserId
+            LIMIT 1;
+            """;
+
+        var ownerRole = await conn.QueryFirstOrDefaultAsync<string>(ownerSql, new { treeId, ownerUserId });
+        if (ownerRole != "owner")
+            return Forbid();
+
+        const string userExistsSql = "SELECT COUNT(*) FROM users WHERE user_id = @inviteeUserId;";
+        var userExists = await conn.ExecuteScalarAsync<int>(userExistsSql, new { inviteeUserId = request.InviteeUserId });
+        if (userExists == 0)
+            return NotFound(new FamilyTreeInviteResponse { Success = false, Message = "被邀请用户不存在" });
+
+        const string existingSql = """
+            SELECT role
+            FROM tree_managers
+            WHERE tree_id = @treeId AND user_id = @inviteeUserId
+            LIMIT 1;
+            """;
+
+        var existingRole = await conn.QueryFirstOrDefaultAsync<string>(existingSql, new { treeId, inviteeUserId = request.InviteeUserId });
+        if (existingRole == "owner")
+            return Conflict(new FamilyTreeInviteResponse { Success = false, Message = "该用户已是族谱创建者" });
+
+        if (existingRole == "editor")
+            return Ok(new FamilyTreeInviteResponse { Success = true, Message = "该用户已是协作者" });
+
+        var now = DateTime.Now;
+        const string insertSql = """
+            INSERT INTO tree_managers (tree_id, user_id, role, invited_at)
+            VALUES (@treeId, @inviteeUserId, 'editor', @now);
+            """;
+
+        await conn.ExecuteAsync(insertSql, new { treeId, inviteeUserId = request.InviteeUserId, now });
+
+        return Ok(new FamilyTreeInviteResponse { Success = true, Message = "邀请成功，对方可在「我管理的族谱」中看到该谱" });
+    }
+
+    /// <summary>删除族谱（仅 owner；级联删除成员、婚姻、协作者记录）</summary>
+    [HttpDelete("{treeId:long}")]
+    public async Task<IActionResult> Delete(ulong treeId, [FromQuery] ulong userId)
+    {
+        if (treeId == 0 || userId == 0)
+            return BadRequest(new FamilyTreeInviteResponse { Success = false, Message = "族谱或用户无效" });
+
+        await using var conn = new MySqlConnection(_connectionString);
+        await conn.OpenAsync();
+
+        const string roleSql = """
+            SELECT role
+            FROM tree_managers
+            WHERE tree_id = @treeId AND user_id = @userId
+            LIMIT 1;
+            """;
+
+        var role = await conn.QueryFirstOrDefaultAsync<string>(roleSql, new { treeId, userId });
+        if (role != "owner")
+            return StatusCode(403, new FamilyTreeInviteResponse { Success = false, Message = "仅族谱创建者可删除族谱" });
+
+        const string deleteSql = "DELETE FROM family_trees WHERE tree_id = @treeId;";
+
+        try
+        {
+            var n = await conn.ExecuteAsync(deleteSql, new { treeId });
+            if (n == 0)
+                return NotFound(new FamilyTreeInviteResponse { Success = false, Message = "族谱不存在" });
+
+            return Ok(new FamilyTreeInviteResponse { Success = true, Message = "族谱已删除" });
+        }
+        catch (MySqlException ex)
+        {
+            return BadRequest(new FamilyTreeInviteResponse { Success = false, Message = ex.Message });
+        }
+    }
 }

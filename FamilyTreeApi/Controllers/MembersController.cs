@@ -23,68 +23,122 @@ public class MembersController : ControllerBase
     public async Task<IActionResult> List([FromQuery] MemberListQuery query)
     {
         if (query.TreeId == 0)
-            return BadRequest(new { message = "必须提供有效的 treeId" });
+            return BadRequest(new MemberListResponse { Success = false, Message = "必须提供有效的 treeId" });
 
         if (!ModelState.IsValid)
             return ValidationProblem(ModelState);
 
-        var offset = (query.Page - 1) * query.PageSize;
-        await using var conn = new MySqlConnection(_connectionString);
-        await conn.OpenAsync();
+        var kw = string.IsNullOrWhiteSpace(query.Keyword) ? null : query.Keyword.Trim();
+        return await QueryMembersAsync(query.TreeId, kw, query.Page, query.PageSize, kw);
+    }
 
-        const string countSql = """
-            SELECT COUNT(*)
-            FROM members
-            WHERE tree_id = @treeId
-              AND (@keyword IS NULL OR @keyword = '' OR full_name LIKE @like);
-            """;
+    /// <summary>按姓名模糊查找成员；关键字留空时返回该族谱全部成员。</summary>
+    [HttpGet("search")]
+    public async Task<IActionResult> Search([FromQuery] MemberSearchQuery query)
+    {
+        if (query.TreeId == 0)
+            return BadRequest(new MemberListResponse { Success = false, Message = "必须提供有效的 treeId" });
 
-        const string listSql = """
-            SELECT
-              member_id AS MemberId,
-              tree_id AS TreeId,
-              full_name AS FullName,
-              gender AS Gender,
-              birth_date AS BirthDate,
-              death_date AS DeathDate,
-              biography AS Biography,
-              father_member_id AS FatherMemberId,
-              mother_member_id AS MotherMemberId,
-              generation AS Generation
-            FROM members
-            WHERE tree_id = @treeId
-              AND (@keyword IS NULL OR @keyword = '' OR full_name LIKE @like)
-            ORDER BY member_id
-            LIMIT @take OFFSET @skip;
-            """;
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
 
         var kw = string.IsNullOrWhiteSpace(query.Keyword) ? null : query.Keyword.Trim();
-        var like = kw is null ? null : $"%{kw}%";
+        return await QueryMembersAsync(query.TreeId, kw, query.Page, query.PageSize, kw);
+    }
 
-        var total = await conn.ExecuteScalarAsync<int>(countSql, new
-        {
-            treeId = query.TreeId,
-            keyword = kw,
-            like,
-        });
+    private async Task<IActionResult> QueryMembersAsync(ulong treeId, string? keyword, int page, int pageSize, string? responseKeyword)
+    {
+        var offset = (page - 1) * pageSize;
+        var hasKeyword = !string.IsNullOrEmpty(keyword);
+        var like = hasKeyword ? $"%{keyword}%" : null;
 
-        var items = await conn.QueryAsync<MemberDto>(listSql, new
-        {
-            treeId = query.TreeId,
-            keyword = kw,
-            like,
-            take = query.PageSize,
-            skip = offset,
-        });
+        await using var conn = new MySqlConnection(_connectionString);
+        await conn.OpenAsync();
+        await conn.ExecuteAsync("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
 
-        return Ok(new
+        try
         {
-            success = true,
-            total,
-            query.Page,
-            query.PageSize,
-            items,
-        });
+            int total;
+            IEnumerable<MemberDto> items;
+
+            if (hasKeyword)
+            {
+                const string countSql = """
+                    SELECT COUNT(*)
+                    FROM members
+                    WHERE tree_id = @treeId
+                      AND full_name LIKE @like COLLATE utf8mb4_unicode_ci;
+                    """;
+
+                const string listSql = """
+                    SELECT
+                      member_id AS MemberId,
+                      tree_id AS TreeId,
+                      full_name AS FullName,
+                      gender AS Gender,
+                      birth_date AS BirthDate,
+                      generation AS Generation
+                    FROM members
+                    WHERE tree_id = @treeId
+                      AND full_name LIKE @like COLLATE utf8mb4_unicode_ci
+                    ORDER BY member_id
+                    LIMIT @take OFFSET @skip;
+                    """;
+
+                total = await conn.ExecuteScalarAsync<int>(countSql, new { treeId, like });
+                items = await conn.QueryAsync<MemberDto>(listSql, new
+                {
+                    treeId,
+                    like,
+                    take = pageSize,
+                    skip = offset,
+                });
+            }
+            else
+            {
+                const string countSql = """
+                    SELECT COUNT(*)
+                    FROM members
+                    WHERE tree_id = @treeId;
+                    """;
+
+                const string listSql = """
+                    SELECT
+                      member_id AS MemberId,
+                      tree_id AS TreeId,
+                      full_name AS FullName,
+                      gender AS Gender,
+                      birth_date AS BirthDate,
+                      generation AS Generation
+                    FROM members
+                    WHERE tree_id = @treeId
+                    ORDER BY member_id
+                    LIMIT @take OFFSET @skip;
+                    """;
+
+                total = await conn.ExecuteScalarAsync<int>(countSql, new { treeId });
+                items = await conn.QueryAsync<MemberDto>(listSql, new
+                {
+                    treeId,
+                    take = pageSize,
+                    skip = offset,
+                });
+            }
+
+            return Ok(new MemberListResponse
+            {
+                Success = true,
+                Total = total,
+                Page = page,
+                PageSize = pageSize,
+                Keyword = responseKeyword,
+                Items = items.ToList(),
+            });
+        }
+        catch (MySqlException ex)
+        {
+            return BadRequest(new MemberListResponse { Success = false, Message = ex.Message });
+        }
     }
 
     /// <summary>新增成员</summary>
@@ -208,18 +262,17 @@ public class MembersController : ControllerBase
         }
     }
 
-    /// <summary>分支预览：按当前成员向下展示其后代关系（仅加载该分支子树，默认最多 4 代）</summary>
+    /// <summary>分支预览：自根成员向下加载该支全部后代（maxDepth=0 或不传表示不限代数）</summary>
     [HttpGet("branch")]
     public async Task<IActionResult> Branch(
         [FromQuery] ulong treeId,
         [FromQuery] ulong rootMemberId,
-        [FromQuery] int maxDepth = 4)
+        [FromQuery] int maxDepth = 0)
     {
         if (treeId == 0 || rootMemberId == 0)
             return BadRequest(new { success = false, message = "必须提供有效的 treeId 和 rootMemberId" });
 
-        if (maxDepth < 1 || maxDepth > 20)
-            maxDepth = 4;
+        var depthLimit = ResolveDepthLimit(maxDepth);
 
         await using var conn = new MySqlConnection(_connectionString);
         await conn.OpenAsync();
@@ -228,19 +281,33 @@ public class MembersController : ControllerBase
         if (root is null)
             return NotFound(new { success = false, message = "未找到根成员" });
 
-        var members = await LoadDescendantsAsync(conn, treeId, root, maxDepth);
+        var (members, truncated) = await LoadDescendantsAsync(conn, treeId, root, depthLimit);
         var childrenMap = BuildChildrenMap(members);
-        var node = BuildTreeNode(root, childrenMap, maxDepth: maxDepth);
+        var node = BuildTreeNode(root, childrenMap, maxDepth: depthLimit);
 
-        return Ok(new MemberTreeResponse { Success = true, Data = node });
+        return Ok(new MemberTreeResponse
+        {
+            Success = true,
+            Data = node,
+            LoadedNodeCount = members.Count,
+            MaxDepthApplied = maxDepth,
+            Truncated = truncated,
+            Hint = BuildTreeHint("分支预览", depthLimit, members.Count, truncated,
+                "自根成员向下该支全部后代（非整本族谱其它支系）")
+        });
     }
 
-    /// <summary>祖先查询：显示当前成员的父母与更高父辈（仅沿父系/母系向上加载）</summary>
+    /// <summary>祖先查询：沿父母向上加载全部可追溯祖先（maxDepth=0 或不传表示不限代数）</summary>
     [HttpGet("ancestors")]
-    public async Task<IActionResult> Ancestors([FromQuery] ulong treeId, [FromQuery] ulong memberId)
+    public async Task<IActionResult> Ancestors(
+        [FromQuery] ulong treeId,
+        [FromQuery] ulong memberId,
+        [FromQuery] int maxDepth = 0)
     {
         if (treeId == 0 || memberId == 0)
             return BadRequest(new { success = false, message = "必须提供有效的 treeId 和 memberId" });
+
+        var depthLimit = ResolveDepthLimit(maxDepth);
 
         await using var conn = new MySqlConnection(_connectionString);
         await conn.OpenAsync();
@@ -249,10 +316,99 @@ public class MembersController : ControllerBase
         if (member is null)
             return NotFound(new { success = false, message = "未找到成员" });
 
-        var membersById = await LoadAncestorsAsync(conn, treeId, member);
-        var node = BuildAncestorTree(member, membersById);
+        var (membersById, truncated) = await LoadAncestorsAsync(conn, treeId, member, depthLimit);
+        var node = BuildAncestorTree(member, membersById, depthLimit);
 
-        return Ok(new MemberTreeResponse { Success = true, Data = node });
+        return Ok(new MemberTreeResponse
+        {
+            Success = true,
+            Data = node,
+            LoadedNodeCount = membersById.Count,
+            MaxDepthApplied = maxDepth,
+            Truncated = truncated,
+            Hint = BuildTreeHint("祖先查询", depthLimit, membersById.Count, truncated,
+                "沿父母向上全部可追溯祖先")
+        });
+    }
+
+    /// <summary>直系子女（一层），用于分支预览按需展开。</summary>
+    [HttpGet("children")]
+    public async Task<IActionResult> Children([FromQuery] ulong treeId, [FromQuery] ulong memberId)
+    {
+        if (treeId == 0 || memberId == 0)
+            return BadRequest(new MemberTreeNodesResponse { Success = false, Message = "必须提供有效的 treeId 和 memberId" });
+
+        await using var conn = new MySqlConnection(_connectionString);
+        await conn.OpenAsync();
+
+        if (await LoadMemberAsync(conn, treeId, memberId) is null)
+            return NotFound(new MemberTreeNodesResponse { Success = false, Message = "未找到成员" });
+
+        const string sql = """
+            SELECT
+              m.member_id AS MemberId,
+              m.full_name AS FullName,
+              m.gender AS Gender,
+              m.generation AS Generation,
+              EXISTS(
+                SELECT 1 FROM members c
+                WHERE c.tree_id = m.tree_id
+                  AND (c.father_member_id = m.member_id OR c.mother_member_id = m.member_id)
+                LIMIT 1
+              ) AS HasMore
+            FROM members m
+            WHERE m.tree_id = @treeId
+              AND (m.father_member_id = @memberId OR m.mother_member_id = @memberId)
+            ORDER BY m.generation, m.full_name;
+            """;
+
+        var items = (await conn.QueryAsync<MemberTreeNodeSummaryDto>(sql, new { treeId, memberId })).ToList();
+        foreach (var item in items)
+            item.Relation = "子女";
+
+        return Ok(new MemberTreeNodesResponse
+        {
+            Success = true,
+            Items = items,
+            Hint = $"已加载 {items.Count} 位直系子女。"
+        });
+    }
+
+    /// <summary>父母（一层），用于祖先查询按需展开。</summary>
+    [HttpGet("parents")]
+    public async Task<IActionResult> Parents([FromQuery] ulong treeId, [FromQuery] ulong memberId)
+    {
+        if (treeId == 0 || memberId == 0)
+            return BadRequest(new MemberTreeNodesResponse { Success = false, Message = "必须提供有效的 treeId 和 memberId" });
+
+        await using var conn = new MySqlConnection(_connectionString);
+        await conn.OpenAsync();
+
+        var member = await LoadMemberAsync(conn, treeId, memberId);
+        if (member is null)
+            return NotFound(new MemberTreeNodesResponse { Success = false, Message = "未找到成员" });
+
+        var items = new List<MemberTreeNodeSummaryDto>();
+        if (member.FatherMemberId is > 0)
+        {
+            var father = await LoadMemberSummaryRowAsync(conn, treeId, member.FatherMemberId.Value);
+            if (father is not null)
+                items.Add(ToSummaryNode(father, "父亲"));
+        }
+
+        if (member.MotherMemberId is > 0)
+        {
+            var mother = await LoadMemberSummaryRowAsync(conn, treeId, member.MotherMemberId.Value);
+            if (mother is not null)
+                items.Add(ToSummaryNode(mother, "母亲"));
+        }
+
+        return Ok(new MemberTreeNodesResponse
+        {
+            Success = true,
+            Items = items,
+            Hint = $"已加载 {items.Count} 位父母。"
+        });
     }
 
     /// <summary>按成员主键查询（可选 treeId 校验归属）</summary>
@@ -340,6 +496,18 @@ public class MembersController : ControllerBase
         FROM members
         """;
 
+    private const string MemberTreeSelectSql = """
+        SELECT
+          member_id AS MemberId,
+          tree_id AS TreeId,
+          full_name AS FullName,
+          gender AS Gender,
+          father_member_id AS FatherMemberId,
+          mother_member_id AS MotherMemberId,
+          generation AS Generation
+        FROM members
+        """;
+
     private static Task<MemberDto?> LoadMemberAsync(MySqlConnection conn, ulong treeId, ulong memberId, bool requireTreeMatch = true)
     {
         var sql = requireTreeMatch
@@ -349,41 +517,112 @@ public class MembersController : ControllerBase
         return conn.QueryFirstOrDefaultAsync<MemberDto>(sql, new { memberId, treeId });
     }
 
-    /// <summary>自根成员起 BFS 加载直系后代（不扫描整本族谱，受 maxDepth 限制）。</summary>
-    private static async Task<List<MemberDto>> LoadDescendantsAsync(MySqlConnection conn, ulong treeId, MemberDto root, int maxDepth)
+    private sealed class MemberSummaryRow
     {
-        const int maxNodes = 1500;
+        public ulong MemberId { get; set; }
+        public string FullName { get; set; } = "";
+        public string Gender { get; set; } = "";
+        public uint? Generation { get; set; }
+        public ulong? FatherMemberId { get; set; }
+        public ulong? MotherMemberId { get; set; }
+    }
+
+    private static Task<MemberSummaryRow?> LoadMemberSummaryRowAsync(MySqlConnection conn, ulong treeId, ulong memberId)
+    {
+        const string sql = """
+            SELECT
+              member_id AS MemberId,
+              full_name AS FullName,
+              gender AS Gender,
+              generation AS Generation,
+              father_member_id AS FatherMemberId,
+              mother_member_id AS MotherMemberId
+            FROM members
+            WHERE tree_id = @treeId AND member_id = @memberId
+            LIMIT 1;
+            """;
+
+        return conn.QueryFirstOrDefaultAsync<MemberSummaryRow>(sql, new { treeId, memberId });
+    }
+
+    private static MemberTreeNodeSummaryDto ToSummaryNode(MemberSummaryRow row, string relation) =>
+        new()
+        {
+            MemberId = row.MemberId,
+            FullName = row.FullName,
+            Gender = row.Gender,
+            Generation = row.Generation,
+            Relation = relation,
+            HasMore = row.FatherMemberId.HasValue || row.MotherMemberId.HasValue
+        };
+
+    private const int UnlimitedDepth = int.MaxValue;
+    private const int SafetyMaxNodes = 500_000;
+
+    /// <summary>maxDepth &lt;= 0 表示不限代数；正数表示最多 N 代（上限 200）。</summary>
+    private static int ResolveDepthLimit(int maxDepth) =>
+        maxDepth <= 0 ? UnlimitedDepth : Math.Clamp(maxDepth, 1, 200);
+
+    private static string BuildTreeHint(string title, int depthLimit, int count, bool truncated, string scope)
+    {
+        var depthText = depthLimit == UnlimitedDepth ? "全部世代" : $"最多 {depthLimit} 代";
+        var hint = $"{title}（{depthText}，{scope}）：已加载 {count} 人。界面树默认仅展开前 2 层，可点击节点展开。";
+        return truncated ? hint + " 数据量过大，部分结果已截断。" : hint;
+    }
+
+    /// <summary>自根成员起 BFS 加载该支全部直系后代（不扫描整本族谱其它支系）。</summary>
+    private static async Task<(List<MemberDto> members, bool truncated)> LoadDescendantsAsync(
+        MySqlConnection conn, ulong treeId, MemberDto root, int depthLimit)
+    {
         var membersById = new Dictionary<ulong, MemberDto> { [root.MemberId] = root };
         var frontier = new List<ulong> { root.MemberId };
         var currentDepth = 0;
+        var truncated = false;
 
-        var childrenSql = MemberSelectSql + """
+        var childrenSql = MemberTreeSelectSql + """
              WHERE tree_id = @treeId
                AND (father_member_id IN @parentIds OR mother_member_id IN @parentIds);
             """;
 
-        while (frontier.Count > 0 && membersById.Count < maxNodes && currentDepth < maxDepth)
+        while (frontier.Count > 0 && currentDepth < depthLimit)
         {
+            if (membersById.Count >= SafetyMaxNodes)
+            {
+                truncated = true;
+                break;
+            }
+
             var children = (await conn.QueryAsync<MemberDto>(childrenSql, new { treeId, parentIds = frontier })).ToList();
             frontier.Clear();
             currentDepth++;
 
             foreach (var child in children)
             {
+                if (membersById.Count >= SafetyMaxNodes)
+                {
+                    truncated = true;
+                    break;
+                }
+
                 if (!membersById.TryAdd(child.MemberId, child))
                     continue;
                 frontier.Add(child.MemberId);
             }
         }
 
-        return membersById.Values.ToList();
+        if (frontier.Count > 0 && currentDepth >= depthLimit && depthLimit != UnlimitedDepth)
+            truncated = true;
+
+        return (membersById.Values.ToList(), truncated);
     }
 
-    /// <summary>按辈分逐层批量向上加载祖先（不扫描整本族谱）。</summary>
-    private static async Task<Dictionary<ulong, MemberDto>> LoadAncestorsAsync(MySqlConnection conn, ulong treeId, MemberDto member)
+    /// <summary>按辈分逐层批量向上加载全部可追溯祖先。</summary>
+    private static async Task<(Dictionary<ulong, MemberDto> members, bool truncated)> LoadAncestorsAsync(
+        MySqlConnection conn, ulong treeId, MemberDto member, int depthLimit)
     {
         var membersById = new Dictionary<ulong, MemberDto> { [member.MemberId] = member };
         var pending = new HashSet<ulong>();
+        var truncated = false;
 
         void EnqueueParent(ulong? parentId)
         {
@@ -394,23 +633,41 @@ public class MembersController : ControllerBase
         EnqueueParent(member.FatherMemberId);
         EnqueueParent(member.MotherMemberId);
 
-        var ancestorsSql = MemberSelectSql + " WHERE tree_id = @treeId AND member_id IN @memberIds;";
+        var ancestorsSql = MemberTreeSelectSql + " WHERE tree_id = @treeId AND member_id IN @memberIds;";
+        var generationsLoaded = 0;
 
-        while (pending.Count > 0)
+        while (pending.Count > 0 && generationsLoaded < depthLimit)
         {
+            if (membersById.Count >= SafetyMaxNodes)
+            {
+                truncated = true;
+                break;
+            }
+
             var ids = pending.ToList();
             pending.Clear();
 
             var loaded = (await conn.QueryAsync<MemberDto>(ancestorsSql, new { treeId, memberIds = ids })).ToList();
+            generationsLoaded++;
+
             foreach (var parent in loaded)
             {
+                if (membersById.Count >= SafetyMaxNodes)
+                {
+                    truncated = true;
+                    break;
+                }
+
                 membersById[parent.MemberId] = parent;
                 EnqueueParent(parent.FatherMemberId);
                 EnqueueParent(parent.MotherMemberId);
             }
         }
 
-        return membersById;
+        if (pending.Count > 0 && depthLimit != UnlimitedDepth)
+            truncated = true;
+
+        return (membersById, truncated);
     }
 
     private static Dictionary<ulong, List<MemberDto>> BuildChildrenMap(List<MemberDto> members)
@@ -484,7 +741,8 @@ public class MembersController : ControllerBase
         return node;
     }
 
-    private static MemberTreeNodeDto BuildAncestorTree(MemberDto member, Dictionary<ulong, MemberDto> membersById, int depth = 0)
+    private static MemberTreeNodeDto BuildAncestorTree(
+        MemberDto member, Dictionary<ulong, MemberDto> membersById, int maxDepth, int depth = 0)
     {
         var node = new MemberTreeNodeDto
         {
@@ -502,19 +760,19 @@ public class MembersController : ControllerBase
             Children = new List<MemberTreeNodeDto>()
         };
 
-        if (depth >= 50)
+        if (depth >= maxDepth)
             return node;
 
         if (member.FatherMemberId.HasValue && membersById.TryGetValue(member.FatherMemberId.Value, out var father))
         {
-            var fatherNode = BuildAncestorTree(father, membersById, depth + 1);
+            var fatherNode = BuildAncestorTree(father, membersById, maxDepth, depth + 1);
             fatherNode.Relation = "父亲";
             node.Children.Add(fatherNode);
         }
 
         if (member.MotherMemberId.HasValue && membersById.TryGetValue(member.MotherMemberId.Value, out var mother))
         {
-            var motherNode = BuildAncestorTree(mother, membersById, depth + 1);
+            var motherNode = BuildAncestorTree(mother, membersById, maxDepth, depth + 1);
             motherNode.Relation = "母亲";
             node.Children.Add(motherNode);
         }

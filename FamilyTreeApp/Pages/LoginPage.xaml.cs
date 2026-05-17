@@ -89,6 +89,7 @@ namespace FamilyTreeApp.Pages
                             return;
                         }
                         mainWindow.SetCurrentUser(loginResult.UserId);
+                        mainWindow.EnterMainShell();
                         if (mainWindow.MainFrame == null)
                         {
                             MessageBox.Show("主窗口中没有 MainFrame");
@@ -130,6 +131,7 @@ namespace FamilyTreeApp.Pages
                                 return;
                             }
                             mainWindow.SetCurrentUser(registerResult.UserId);
+                            mainWindow.EnterMainShell();
                             if (mainWindow.MainFrame == null)
                             {
                                 MessageBox.Show("主窗口中没有 MainFrame");

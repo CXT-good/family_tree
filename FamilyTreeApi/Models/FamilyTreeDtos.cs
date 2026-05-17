@@ -40,3 +40,14 @@ public class FamilyTreeCreateResponse
     public string TreeName { get; set; } = "";
     public string? Message { get; set; }
 }
+
+public class FamilyTreeInviteRequest
+{
+    public ulong InviteeUserId { get; set; }
+}
+
+public class FamilyTreeInviteResponse
+{
+    public bool Success { get; set; } = true;
+    public string? Message { get; set; }
+}

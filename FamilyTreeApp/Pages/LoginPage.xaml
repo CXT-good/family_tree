@@ -84,9 +84,11 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border Background="{TemplateBinding Background}"
-                                CornerRadius="8">
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"/>
+                                    VerticalAlignment="Center"
+                                    RecognizesAccessKey="True"/>
                         </Border>
                     </ControlTemplate>
                 </Setter.Value>
@@ -206,8 +208,9 @@
 
                 <!-- 登录按钮 -->
                 <Button Content="登录"
-                        Height="35"
-                        Width="75"
+                        HorizontalAlignment="Stretch"
+                        MinHeight="48"
+                        Margin="20,0,20,0"
                         Style="{StaticResource LoginButtonStyle}"
                         Click="LoginButton_Click"/>
             </StackPanel>

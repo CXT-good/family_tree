@@ -63,6 +63,28 @@ public class FamilyTreeCreateResponseDto
     public string? Message { get; set; }
 }
 
+public class FamilyTreeInviteResponseDto
+{
+    [JsonPropertyName("success")]
+    public bool Success { get; set; }
+
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+}
+
+/// <summary>成员增删改等通用 API 响应（避免 Dictionary 反序列化 JsonElement 强转失败）。</summary>
+public class ApiActionResponseDto
+{
+    [JsonPropertyName("success")]
+    public bool Success { get; set; }
+
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+
+    [JsonPropertyName("memberId")]
+    public ulong? MemberId { get; set; }
+}
+
 public class MemberDto
 {
     [JsonPropertyName("memberId")]
@@ -167,8 +189,59 @@ public class MemberListResponseDto
     [JsonPropertyName("pageSize")]
     public int PageSize { get; set; }
 
+    [JsonPropertyName("keyword")]
+    public string? Keyword { get; set; }
+
     [JsonPropertyName("items")]
     public List<MemberDto> Items { get; set; } = new();
+
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+}
+
+public class MemberTreeNodeSummaryDto
+{
+    [JsonPropertyName("memberId")]
+    public ulong MemberId { get; set; }
+
+    [JsonPropertyName("fullName")]
+    public string FullName { get; set; } = "";
+
+    [JsonPropertyName("gender")]
+    public string Gender { get; set; } = "";
+
+    [JsonPropertyName("generation")]
+    public uint? Generation { get; set; }
+
+    [JsonPropertyName("relation")]
+    public string Relation { get; set; } = "";
+
+    [JsonPropertyName("hasMore")]
+    public bool HasMore { get; set; }
+}
+
+public class MemberTreeNodesResponseDto
+{
+    [JsonPropertyName("success")]
+    public bool Success { get; set; }
+
+    [JsonPropertyName("items")]
+    public List<MemberTreeNodeSummaryDto> Items { get; set; } = new();
+
+    [JsonPropertyName("hint")]
+    public string? Hint { get; set; }
+
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+}
+
+public class MemberSingleResponseDto
+{
+    [JsonPropertyName("success")]
+    public bool Success { get; set; }
+
+    [JsonPropertyName("data")]
+    public MemberDto? Data { get; set; }
 
     [JsonPropertyName("message")]
     public string? Message { get; set; }
@@ -223,6 +296,18 @@ public class MemberTreeResponseDto
 
     [JsonPropertyName("message")]
     public string? Message { get; set; }
+
+    [JsonPropertyName("loadedNodeCount")]
+    public int LoadedNodeCount { get; set; }
+
+    [JsonPropertyName("maxDepthApplied")]
+    public int MaxDepthApplied { get; set; }
+
+    [JsonPropertyName("truncated")]
+    public bool Truncated { get; set; }
+
+    [JsonPropertyName("hint")]
+    public string? Hint { get; set; }
 }
 
 public class MemberRelationNodeDto

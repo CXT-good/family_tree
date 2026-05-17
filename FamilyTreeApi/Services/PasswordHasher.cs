@@ -16,4 +16,14 @@ public static class PasswordHasher
             sb.Append(b.ToString("x2"));
         return sb.ToString();
     }
+
+    /// <summary>校验明文：支持库中存 SHA256 十六进制，或测试用明文（如 CSV 中的 123456）。</summary>
+    public static bool Verify(string plain, string stored)
+    {
+        if (string.IsNullOrEmpty(stored))
+            return false;
+        if (stored == plain)
+            return true;
+        return stored == Sha256Hex(plain);
+    }
 }
