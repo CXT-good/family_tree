@@ -1832,23 +1832,23 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\lenovo\\.nuget\\packages\\": {},
-    "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
+    "C:\\Users\\胡静雨\\.nuget\\packages\\": {},
+    "D:\\app\\vssdk\\NuGetPackages": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "E:\\桌面\\Family_tree\\family_tree\\FamilyTreeApi\\FamilyTreeApi.csproj",
+      "projectUniqueName": "D:\\大三下课程\\数据库系统\\实验\\family_tree\\FamilyTreeApi\\FamilyTreeApi.csproj",
       "projectName": "FamilyTreeApi",
-      "projectPath": "E:\\桌面\\Family_tree\\family_tree\\FamilyTreeApi\\FamilyTreeApi.csproj",
-      "packagesPath": "C:\\Users\\lenovo\\.nuget\\packages\\",
-      "outputPath": "E:\\桌面\\Family_tree\\family_tree\\FamilyTreeApi\\obj\\",
+      "projectPath": "D:\\大三下课程\\数据库系统\\实验\\family_tree\\FamilyTreeApi\\FamilyTreeApi.csproj",
+      "packagesPath": "C:\\Users\\胡静雨\\.nuget\\packages\\",
+      "outputPath": "D:\\大三下课程\\数据库系统\\实验\\family_tree\\FamilyTreeApi\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
-        "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+        "D:\\app\\vssdk\\NuGetPackages"
       ],
       "configFilePaths": [
-        "C:\\Users\\lenovo\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Users\\胡静雨\\AppData\\Roaming\\NuGet\\NuGet.Config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
       ],

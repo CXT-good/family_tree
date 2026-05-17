@@ -65,3 +65,42 @@ public class MemberListQuery
     /// <summary>按姓名模糊筛选（可选）</summary>
     public string? Keyword { get; set; }
 }
+
+public class MemberTreeNodeDto
+{
+    public ulong MemberId { get; set; }
+    public ulong TreeId { get; set; }
+    public string FullName { get; set; } = "";
+    public string Gender { get; set; } = "";
+    public DateTime? BirthDate { get; set; }
+    public DateTime? DeathDate { get; set; }
+    public string? Biography { get; set; }
+    public ulong? FatherMemberId { get; set; }
+    public ulong? MotherMemberId { get; set; }
+    public uint? Generation { get; set; }
+    public string Relation { get; set; } = "";
+    public List<MemberTreeNodeDto> Children { get; set; } = new();
+}
+
+public class MemberTreeResponse
+{
+    public bool Success { get; set; }
+    public MemberTreeNodeDto? Data { get; set; }
+    public string? Message { get; set; }
+}
+
+public class MemberRelationNodeDto
+{
+    public ulong MemberId { get; set; }
+    public string FullName { get; set; } = "";
+    public string Gender { get; set; } = "";
+    public uint? Generation { get; set; }
+    public string RelationToPrevious { get; set; } = "";
+}
+
+public class MemberRelationshipResponse
+{
+    public bool Success { get; set; }
+    public List<MemberRelationNodeDto> Path { get; set; } = new();
+    public string? Message { get; set; }
+}

@@ -1,0 +1,749 @@
+﻿<Page x:Class="FamilyTreeApp.Pages.ClanManagePage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:local="clr-namespace:FamilyTreeApp.Pages"
+      xmlns:controls="clr-namespace:FamilyTreeApp.Controls"
+      Title="族谱管理"
+      Background="#F5F1EB">
+
+        <!-- 样式定义 -->
+        <Page.Resources>
+                <!-- 查询结果项样式 -->
+                <Style x:Key="ClanItemStyle"
+                       TargetType="Border">
+                        <Setter Property="Background"
+                                Value="#FFFFFF"/>
+                        <Setter Property="CornerRadius"
+                                Value="12"/>
+                        <Setter Property="BorderBrush"
+                                Value="#E0D6CA"/>
+                        <Setter Property="BorderThickness"
+                                Value="1"/>
+                        <Setter Property="Margin"
+                                Value="0,0,0,16"/>
+                        <Setter Property="Padding"
+                                Value="20,16"/>
+                        <Setter Property="Effect">
+                                <Setter.Value>
+                                        <DropShadowEffect ShadowDepth="0"
+                                                          BlurRadius="10"
+                                                          Opacity="0.06"
+                                                          Color="Black"/>
+                                </Setter.Value>
+                        </Setter>
+                </Style>
+
+                <!-- 操作按钮样式 -->
+                <Style x:Key="OperationButtonStyle"
+                       TargetType="Button">
+                        <Setter Property="Background"
+                                Value="Transparent"/>
+                        <Setter Property="BorderBrush"
+                                Value="#B8653A"/>
+                        <Setter Property="BorderThickness"
+                                Value="1"/>
+                        <Setter Property="Foreground"
+                                Value="#B8653A"/>
+                        <Setter Property="Padding"
+                                Value="12,8"/>
+                        <Setter Property="Width"
+                                Value="70"/>
+                        <Setter Property="Height"
+                                Value="30"/>
+                        <Setter Property="Margin"
+                                Value="0,0,8,0"/>
+                        <Setter Property="Cursor"
+                                Value="Hand"/>
+                        <Setter Property="FontSize"
+                                Value="13"/>
+                        <Setter Property="Template">
+                                <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}"
+                                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                                        CornerRadius="6">
+                                                        <ContentPresenter HorizontalAlignment="Center"
+                                                                          VerticalAlignment="Center"/>
+                                                </Border>
+                                        </ControlTemplate>
+                                </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                                <Trigger Property="IsMouseOver"
+                                         Value="True">
+                                        <Setter Property="Background"
+                                                Value="#F8F0E8"/>
+                                </Trigger>
+                        </Style.Triggers>
+                </Style>
+
+                <!-- 输入框样式 -->
+                <Style x:Key="InputBoxStyle"
+                       TargetType="TextBox">
+                        <Setter Property="Background"
+                                Value="#F8F0E8"/>
+                        <Setter Property="BorderBrush"
+                                Value="#D4C5B0"/>
+                        <Setter Property="BorderThickness"
+                                Value="1"/>
+                        <Setter Property="Padding"
+                                Value="12,8"/>
+                        <Setter Property="FontSize"
+                                Value="13"/>
+                        <Setter Property="Template">
+                                <Setter.Value>
+                                        <ControlTemplate TargetType="TextBox">
+                                                <Border Background="{TemplateBinding Background}"
+                                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                                        CornerRadius="6">
+                                                        <ScrollViewer x:Name="PART_ContentHost"
+                                                                      Focusable="false"/>
+                                                </Border>
+                                        </ControlTemplate>
+                                </Setter.Value>
+                        </Setter>
+                        <Setter Property="Margin"
+                                Value="0,0,8,0"/>
+                </Style>
+        </Page.Resources>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <Grid Margin="30,20,20,40">
+                        <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <!-- 第一行：查询和创建 -->
+                        <Grid Grid.Row="0"
+                              Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="0.5*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- 第一列：查询族谱 -->
+                                <Border Grid.Column="0"
+                                        Margin="0,0,0,10"
+                                        Style="{StaticResource ClanItemStyle}">
+                                        <StackPanel>
+                                                <TextBlock Text="查询族谱"
+                                                           FontSize="18"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#2C2217"
+                                                           Margin="30,0,0,10"/>
+
+                                                <Grid Margin="0,0,0,16">
+                                                        <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="0.4*"/>
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <controls:PlaceholderTextBox x:Name="QueryKeywordInput"
+                                                                                     Grid.Column="0"
+                                                                                     Margin="30,0,40,0"
+                                                                                     Style="{StaticResource InputBoxStyle}"
+                                                                                     Placeholder="谱名/姓氏/族谱ID/创建者ID"/>
+                                                        <Button Grid.Column="1"
+                                                                Margin="0,0,80,0"
+                                                                Content="查询"
+                                                                Style="{StaticResource OperationButtonStyle}"
+                                                                Click="QueryButton_Click"/>
+                                                </Grid>
+
+                                                <Border Height="1"
+                                                        Background="#E0D6CA"
+                                                        Margin="0,0,0,16"/>
+
+                                                <TextBlock Text="查询结果"
+                                                           FontSize="16"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#2C2217"
+                                                           Margin="30,0,0,10"/>
+
+                                                <!-- 查询结果列表 -->
+                                                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                              MaxHeight="200">
+                                                        <ItemsControl x:Name="QueryResultsList">
+                                                                <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate>
+                                                                                <Border Style="{StaticResource ClanItemStyle}"
+                                                                                        Margin="0,0,0,8">
+                                                                                        <Grid>
+                                                                                                <Grid.ColumnDefinitions>
+                                                                                                        <ColumnDefinition Width="Auto"/>
+                                                                                                        <ColumnDefinition Width="Auto"/>
+                                                                                                        <ColumnDefinition Width="Auto"/>
+                                                                                                        <ColumnDefinition Width="*"/>
+                                                                                                </Grid.ColumnDefinitions>
+
+                                                                                                <StackPanel Grid.Column="0"
+                                                                                                            Orientation="Vertical"
+                                                                                                            Margin="0,0,16,0">
+                                                                                                        <TextBlock Text="族谱ID:"
+                                                                                                                   FontSize="12"
+                                                                                                                   Foreground="#8A7E72"/>
+                                                                                                        <TextBlock Text="{Binding Id}"
+                                                                                                                   FontSize="13"
+                                                                                                                   Foreground="#2C2217"/>
+                                                                                                </StackPanel>
+
+                                                                                                <StackPanel Grid.Column="1"
+                                                                                                            Orientation="Vertical"
+                                                                                                            Margin="0,0,16,0">
+                                                                                                        <TextBlock Text="族谱名:"
+                                                                                                                   FontSize="12"
+                                                                                                                   Foreground="#8A7E72"/>
+                                                                                                        <TextBlock Text="{Binding Name}"
+                                                                                                                   FontSize="13"
+                                                                                                                   Foreground="#2C2217"/>
+                                                                                                </StackPanel>
+
+                                                                                                <StackPanel Grid.Column="2"
+                                                                                                            Orientation="Vertical"
+                                                                                                            Margin="0,0,16,0">
+                                                                                                        <TextBlock Text="姓氏:"
+                                                                                                                   FontSize="12"
+                                                                                                                   Foreground="#8A7E72"/>
+                                                                                                        <TextBlock Text="{Binding Surname}"
+                                                                                                                   FontSize="13"
+                                                                                                                   Foreground="#2C2217"/>
+                                                                                                </StackPanel>
+
+                                                                                                <StackPanel Grid.Column="3"
+                                                                                                            Orientation="Vertical">
+                                                                                                        <TextBlock Text="创建者ID / 修谱时间"
+                                                                                                                   FontSize="12"
+                                                                                                                   Foreground="#8A7E72"/>
+                                                                                                        <StackPanel Orientation="Horizontal">
+                                                                                                                <TextBlock Text="{Binding Creator}"
+                                                                                                                           FontSize="13"
+                                                                                                                           Foreground="#2C2217"/>
+                                                                                                                <TextBlock Text="  ·  "
+                                                                                                                           FontSize="13"
+                                                                                                                           Foreground="#8A7E72"/>
+                                                                                                                <TextBlock Text="{Binding LastModified}"
+                                                                                                                           FontSize="13"
+                                                                                                                           Foreground="#2C2217"/>
+                                                                                                        </StackPanel>
+                                                                                                </StackPanel>
+                                                                                        </Grid>
+                                                                                </Border>
+                                                                        </DataTemplate>
+                                                                </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                </ScrollViewer>
+                                        </StackPanel>
+                                </Border>
+
+                                <!-- 第二列：创建族谱 -->
+                                <Border Grid.Column="1"
+                                        Margin="5,0,0,0"
+                                        Style="{StaticResource ClanItemStyle}">
+                                        <StackPanel>
+                                                <TextBlock Text="创建族谱"
+                                                           FontSize="18"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#2C2217"
+                                                           Margin="0,0,0,10"/>
+
+                                                <controls:PlaceholderTextBox x:Name="CreateTreeNameInput"
+                                                                             Style="{StaticResource InputBoxStyle}"
+                                                                             Placeholder="请输入族谱名称"/>
+
+                                                <StackPanel Orientation="Horizontal"
+                                                            Margin="0,20,0,0">
+                                                        <Button Content="确认创建"
+                                                                Margin="30,0,40,0"
+                                                                Style="{StaticResource OperationButtonStyle}"
+                                                                Click="CreateClanConfirmButton_Click"/>
+                                                        <Button Content="取消"
+                                                                Style="{StaticResource OperationButtonStyle}"
+                                                                Click="CreateClanCancelButton_Click"/>
+                                                </StackPanel>
+                                        </StackPanel>
+                                </Border>
+                        </Grid>
+
+                        <!-- 第二行：我创建的族谱 -->
+                        <Border Grid.Row="1"
+                                Margin="0,0,0,10"
+                                Style="{StaticResource ClanItemStyle}">
+                                <StackPanel>
+                                        <TextBlock Text="我创建的族谱"
+                                                   FontSize="18"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#2C2217"
+                                                   Margin="20,0,0,16"/>
+
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                                <ItemsControl x:Name="MyCreatedClansList">
+                                                        <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                        <Border Style="{StaticResource ClanItemStyle}"
+                                                                                Margin="20,0,20,10">
+                                                                                <Grid>
+                                                                                        <Grid.ColumnDefinitions>
+                                                                                                <ColumnDefinition Width="0.7*"/>
+                                                                                                <ColumnDefinition Width="1*"/>
+                                                                                                <ColumnDefinition Width="1*"/>
+                                                                                                <ColumnDefinition Width="1.3*"/>
+                                                                                                <ColumnDefinition Width="2.5*"/>
+                                                                                        </Grid.ColumnDefinitions>
+
+                                                                                        <StackPanel Grid.Column="0"
+                                                                                                    Orientation="Vertical"
+                                                                                                    Margin="0,0,16,0">
+                                                                                                <TextBlock Text="ID:"
+                                                                                                           FontSize="12"
+                                                                                                           Foreground="#8A7E72"/>
+                                                                                                <TextBlock Text="{Binding Id}"
+                                                                                                           FontSize="13"
+                                                                                                           Foreground="#2C2217"/>
+                                                                                        </StackPanel>
+
+                                                                                        <StackPanel Grid.Column="1"
+                                                                                                    Orientation="Vertical">
+                                                                                                <TextBlock Text="族谱名:"
+                                                                                                           FontSize="12"
+                                                                                                           Foreground="#8A7E72"/>
+                                                                                                <TextBlock Text="{Binding Name}"
+                                                                                                           FontSize="13"
+                                                                                                           Foreground="#2C2217"/>
+                                                                                        </StackPanel>
+
+                                                                                        <StackPanel Grid.Column="2"
+                                                                                                    Orientation="Vertical"
+                                                                                                    Margin="0,0,16,0">
+                                                                                                <TextBlock Text="姓氏:"
+                                                                                                           FontSize="12"
+                                                                                                           Foreground="#8A7E72"/>
+                                                                                                <TextBlock Text="{Binding Surname}"
+                                                                                                           FontSize="13"
+                                                                                                           Foreground="#2C2217"/>
+                                                                                        </StackPanel>
+
+                                                                                        <StackPanel Grid.Column="3"
+                                                                                                    Orientation="Vertical"
+                                                                                                    Margin="0,0,16,0">
+                                                                                                <TextBlock Text="最后修改:"
+                                                                                                           FontSize="12"
+                                                                                                           Foreground="#8A7E72"/>
+                                                                                                <TextBlock Text="{Binding LastModified}"
+                                                                                                           FontSize="13"
+                                                                                                           Foreground="#2C2217"/>
+                                                                                        </StackPanel>
+
+                                                                                        <StackPanel Grid.Column="4"
+                                                                                                    Orientation="Horizontal">
+                                                                                                <Button Content="邀请管理"
+                                                                                                        Margin="20,0,30,0"
+                                                                                                        Style="{StaticResource OperationButtonStyle}"
+                                                                                                        Click="InviteButton_Click"/>
+                                                                                                <Button Content="操作成员"
+                                                                                                        Margin="0,0,30,0"
+                                                                                                        Style="{StaticResource OperationButtonStyle}"
+                                                                                                        Click="MemberOperationButton_Click"/>
+                                                                                                <Button Content="删除族谱"
+                                                                                                        Style="{StaticResource OperationButtonStyle}"
+                                                                                                        Click="DeleteButton_Click"/>
+                                                                                        </StackPanel>
+                                                                                </Grid>
+                                                                        </Border>
+                                                                </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                        </ScrollViewer>
+                                </StackPanel>
+                        </Border>
+
+                        <!-- 第三行：我管理的族谱 -->
+                        <Border Grid.Row="2"
+                                Style="{StaticResource ClanItemStyle}">
+                                <StackPanel>
+                                        <TextBlock Text="我管理的族谱"
+                                                   FontSize="18"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#2C2217"
+                                                   Margin="20,0,0,16"/>
+
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                                <ItemsControl x:Name="MyManagedClansList">
+                                                        <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                        <Border Style="{StaticResource ClanItemStyle}"
+                                                                                Margin="20,0,10,10">
+                                                                                <Grid>
+                                                                                        <Grid.ColumnDefinitions>
+                                                                                                <ColumnDefinition Width="0.8*"/>
+                                                                                                <ColumnDefinition Width="1*"/>
+                                                                                                <ColumnDefinition Width="1*"/>
+                                                                                                <ColumnDefinition Width="1*"/>
+                                                                                                <ColumnDefinition Width="1.7*"/>
+                                                                                                <ColumnDefinition Width="2*"/>
+                                                                                        </Grid.ColumnDefinitions>
+
+                                                                                        <StackPanel Grid.Column="0"
+                                                                                                    Orientation="Vertical"
+                                                                                                    Margin="0,0,16,0">
+                                                                                                <TextBlock Text="ID:"
+                                                                                                           FontSize="12"
+                                                                                                           Foreground="#8A7E72"/>
+                                                                                                <TextBlock Text="{Binding Id}"
+                                                                                                           FontSize="13"
+                                                                                                           Foreground="#2C2217"/>
+                                                                                        </StackPanel>
+
+                                                                                        <StackPanel Grid.Column="1"
+                                                                                                    Orientation="Vertical">
+                                                                                                <TextBlock Text="族谱名:"
+                                                                                                           FontSize="12"
+                                                                                                           Foreground="#8A7E72"/>
+                                                                                                <TextBlock Text="{Binding Name}"
+                                                                                                           FontSize="13"
+                                                                                                           Foreground="#2C2217"/>
+                                                                                        </StackPanel>
+
+                                                                                        <StackPanel Grid.Column="2"
+                                                                                                    Orientation="Vertical"
+                                                                                                    Margin="0,0,16,0">
+                                                                                                <TextBlock Text="姓氏:"
+                                                                                                           FontSize="12"
+                                                                                                           Foreground="#8A7E72"/>
+                                                                                                <TextBlock Text="{Binding Surname}"
+                                                                                                           FontSize="13"
+                                                                                                           Foreground="#2C2217"/>
+                                                                                        </StackPanel>
+
+                                                                                        <StackPanel Grid.Column="3"
+                                                                                                    Orientation="Vertical"
+                                                                                                    Margin="0,0,16,0">
+                                                                                                <TextBlock Text="创建者:"
+                                                                                                           FontSize="12"
+                                                                                                           Foreground="#8A7E72"/>
+                                                                                                <TextBlock Text="{Binding Creator}"
+                                                                                                           FontSize="13"
+                                                                                                           Foreground="#2C2217"/>
+                                                                                        </StackPanel>
+
+                                                                                        <StackPanel Grid.Column="4"
+                                                                                                    Orientation="Vertical"
+                                                                                                    Margin="0,0,16,0">
+                                                                                                <TextBlock Text="最后修改:"
+                                                                                                           FontSize="12"
+                                                                                                           Foreground="#8A7E72"/>
+                                                                                                <TextBlock Text="{Binding LastModified}"
+                                                                                                           FontSize="13"
+                                                                                                           Foreground="#2C2217"/>
+                                                                                        </StackPanel>
+
+                                                                                        <StackPanel Grid.Column="5"
+                                                                                                    Orientation="Horizontal"
+                                                                                                    Margin="0,0,16,0">
+                                                                                                <Button Content="操作成员"
+                                                                                                        Margin="0,0,22,0"
+                                                                                                        Style="{StaticResource OperationButtonStyle}"
+                                                                                                        Click="MemberOperationButton_Click"/>
+                                                                                                <Button Content="删除族谱"
+                                                                                                        Style="{StaticResource OperationButtonStyle}"
+                                                                                                        Click="DeleteButton_Click"/>
+                                                                                        </StackPanel>
+                                                                                </Grid>
+                                                                        </Border>
+                                                                </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                        </ScrollViewer>
+                                </StackPanel>
+                        </Border>
+
+                        <!-- 第四行：族谱树形预览与亲缘查询 -->
+                        <Border Grid.Row="3"
+                                Margin="0,0,0,10"
+                                Style="{StaticResource ClanItemStyle}">
+                                <StackPanel>
+                                        <TextBlock Text="族谱树形视图与亲缘查询"
+                                                   FontSize="18"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#2C2217"
+                                                   Margin="20,0,0,16"/>
+
+                                        <Grid Margin="20,0,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="1.2*"/>
+                                                        <ColumnDefinition Width="1*"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <StackPanel Grid.Column="0">
+                                                        <TextBlock Text="分支预览 / 祖先查询"
+                                                                   FontSize="16"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="#2C2217"
+                                                                   Margin="0,0,0,12"/>
+
+                                                        <Grid Margin="0,0,0,16">
+                                                                <Grid.RowDefinitions>
+                                                                        <RowDefinition Height="Auto"/>
+                                                                        <RowDefinition Height="Auto"/>
+                                                                </Grid.RowDefinitions>
+
+                                                                <StackPanel Orientation="Horizontal"
+                                                                            Grid.Row="0"
+                                                                            Margin="0,0,0,8">
+                                                                        <controls:PlaceholderTextBox x:Name="TreeIdInput"
+                                                                                                     Width="120"
+                                                                                                     Style="{StaticResource InputBoxStyle}"
+                                                                                                     Placeholder="族谱ID"
+                                                                                                     Margin="0,0,8,0"/>
+                                                                        <controls:PlaceholderTextBox x:Name="BranchRootIdInput"
+                                                                                                     Width="120"
+                                                                                                     Style="{StaticResource InputBoxStyle}"
+                                                                                                     Placeholder="根成员ID"
+                                                                                                     Margin="0,0,8,0"/>
+                                                                        <Button Content="预览分支"
+                                                                                Style="{StaticResource OperationButtonStyle}"
+                                                                                Click="BranchPreviewButton_Click"/>
+                                                                </StackPanel>
+
+                                                                <StackPanel Orientation="Horizontal"
+                                                                            Grid.Row="1">
+                                                                        <controls:PlaceholderTextBox x:Name="AncestorMemberIdInput"
+                                                                                                     Width="120"
+                                                                                                     Style="{StaticResource InputBoxStyle}"
+                                                                                                     Placeholder="成员ID"
+                                                                                                     Margin="0,0,8,0"/>
+                                                                        <Button Content="查询祖先"
+                                                                                Style="{StaticResource OperationButtonStyle}"
+                                                                                Click="AncestorQueryButton_Click"/>
+                                                                </StackPanel>
+                                                        </Grid>
+
+                                                        <TextBlock Text="分支预览"
+                                                                   FontSize="14"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="#2C2217"
+                                                                   Margin="0,0,0,8"/>
+                                                        <Border Background="#FFFFFF"
+                                                                BorderBrush="#E0D6CA"
+                                                                BorderThickness="1"
+                                                                CornerRadius="8"
+                                                                Padding="12"
+                                                                Margin="0,0,0,16">
+                                                                <TreeView x:Name="BranchTreeView"
+                                                                          MaxHeight="220"/>
+                                                        </Border>
+
+                                                        <TextBlock Text="祖先树"
+                                                                   FontSize="14"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="#2C2217"
+                                                                   Margin="0,0,0,8"/>
+                                                        <Border Background="#FFFFFF"
+                                                                BorderBrush="#E0D6CA"
+                                                                BorderThickness="1"
+                                                                CornerRadius="8"
+                                                                Padding="12">
+                                                                <TreeView x:Name="AncestorTreeView"
+                                                                          MaxHeight="220"/>
+                                                        </Border>
+                                                </StackPanel>
+
+                                                <StackPanel Grid.Column="1"
+                                                            Margin="20,0,0,0">
+                                                        <TextBlock Text="人物亲缘关系查询"
+                                                                   FontSize="16"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="#2C2217"
+                                                                   Margin="0,0,0,12"/>
+                                                        <StackPanel Orientation="Horizontal">
+                                                                <controls:PlaceholderTextBox x:Name="RelationMemberIdAInput"
+                                                                                             Width="120"
+                                                                                             Style="{StaticResource InputBoxStyle}"
+                                                                                             Placeholder="成员A ID"
+                                                                                             Margin="0,0,8,0"/>
+                                                                <controls:PlaceholderTextBox x:Name="RelationMemberIdBInput"
+                                                                                             Width="120"
+                                                                                             Style="{StaticResource InputBoxStyle}"
+                                                                                             Placeholder="成员B ID"
+                                                                                             Margin="0,0,8,0"/>
+                                                                <Button Content="查询亲缘"
+                                                                        Style="{StaticResource OperationButtonStyle}"
+                                                                        Click="RelationshipQueryButton_Click"/>
+                                                        </StackPanel>
+                                                        <Border Background="#FFFFFF"
+                                                                BorderBrush="#E0D6CA"
+                                                                BorderThickness="1"
+                                                                CornerRadius="8"
+                                                                Padding="12"
+                                                                Margin="0,16,0,0">
+                                                                <StackPanel>
+                                                                        <TextBlock Text="亲缘路径"
+                                                                                   FontSize="14"
+                                                                                   FontWeight="SemiBold"
+                                                                                   Foreground="#2C2217"
+                                                                                   Margin="0,0,0,8"/>
+                                                                        <ItemsControl x:Name="RelationPathList">
+                                                                                <ItemsControl.ItemTemplate>
+                                                                                        <DataTemplate>
+                                                                                                <StackPanel Orientation="Horizontal"
+                                                                                                                Margin="0,4,0,4">
+                                                                                                        <TextBlock Text="{Binding RelationToPrevious}"
+                                                                                                                   FontSize="13"
+                                                                                                                   Foreground="#8A7E72"
+                                                                                                                   Width="60"/>
+                                                                                                        <TextBlock Text="{Binding FullName}"
+                                                                                                                   FontSize="13"
+                                                                                                                   Foreground="#2C2217"/>
+                                                                                                        <TextBlock Text=" （ID: "
+                                                                                                                   FontSize="13"
+                                                                                                                   Foreground="#8A7E72"/>
+                                                                                                        <TextBlock Text="{Binding MemberId}"
+                                                                                                                   FontSize="13"
+                                                                                                                   Foreground="#2C2217"/>
+                                                                                                        <TextBlock Text="）"
+                                                                                                                   FontSize="13"
+                                                                                                                   Foreground="#8A7E72"/>
+                                                                                                </StackPanel>
+                                                                                        </DataTemplate>
+                                                                                </ItemsControl.ItemTemplate>
+                                                                        </ItemsControl>
+                                                                </StackPanel>
+                                                        </Border>
+                                                </StackPanel>
+                                        </Grid>
+                                </StackPanel>
+                        </Border>
+
+                        <!-- 邀请他人管理弹窗 -->
+                        <Popup x:Name="InvitePopup"
+                               StaysOpen="True"
+                               Placement="Center"
+                               AllowsTransparency="True"
+                               PopupAnimation="Fade">
+                                <Border Width="400"
+                                        Background="#FFFFFF"
+                                        CornerRadius="14"
+                                        Padding="28,24"
+                                        Margin="0,0,0,8">
+                                        <Border.Effect>
+                                                <DropShadowEffect ShadowDepth="4"
+                                                                  BlurRadius="28"
+                                                                  Opacity="0.18"
+                                                                  Color="#1A1714"/>
+                                        </Border.Effect>
+                                        <StackPanel>
+                                                <TextBlock Text="邀请他人管理"
+                                                           FontSize="18"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#2C2217"
+                                                           Margin="0,0,0,16"/>
+
+                                                <controls:PlaceholderTextBox Style="{StaticResource InputBoxStyle}"
+                                                                             Placeholder="请输入被邀请人ID"/>
+
+                                                <StackPanel Orientation="Horizontal"
+                                                            Margin="0,16,0,0">
+                                                        <Button Content="确认邀请"
+                                                                Style="{StaticResource OperationButtonStyle}"
+                                                                Click="InviteConfirmButton_Click"/>
+                                                        <Button Content="取消"
+                                                                Style="{StaticResource OperationButtonStyle}"
+                                                                Click="InviteCancelButton_Click"/>
+                                                </StackPanel>
+                                        </StackPanel>
+                                </Border>
+                        </Popup>
+
+                        <!-- 成员操作弹窗 -->
+                        <Popup x:Name="MemberPopup"
+                               StaysOpen="True"
+                               Placement="Center"
+                               AllowsTransparency="True"
+                               PopupAnimation="Fade">
+                                <Border Width="500"
+                                        Background="#FFFFFF"
+                                        CornerRadius="14"
+                                        Padding="28,24"
+                                        Margin="0,0,0,8">
+                                        <Border.Effect>
+                                                <DropShadowEffect ShadowDepth="4"
+                                                                  BlurRadius="28"
+                                                                  Opacity="0.18"
+                                                                  Color="#1A1714"/>
+                                        </Border.Effect>
+                                        <StackPanel>
+                                                <!-- 顶部导航栏 -->
+                                                <StackPanel Orientation="Horizontal"
+                                                            Margin="0,0,0,16">
+                                                        <Button Content="新增成员"
+                                                                Style="{StaticResource OperationButtonStyle}"
+                                                                Click="AddMember_Click"/>
+                                                        <Button Content="修改信息"
+                                                                Style="{StaticResource OperationButtonStyle}"
+                                                                Click="ModifyMember_Click"/>
+                                                        <Button Content="删除成员"
+                                                                Style="{StaticResource OperationButtonStyle}"
+                                                                Click="DeleteMember_Click"/>
+                                                        <Button Content="确认删除"
+                                                                Style="{StaticResource OperationButtonStyle}"
+                                                                Click="MemberToolbarDeleteConfirm_Click"/>
+                                                        <Button Content="取消"
+                                                                Style="{StaticResource OperationButtonStyle}"
+                                                                Click="MemberToolbarDeleteCancel_Click"/>
+                                                </StackPanel>
+
+                                                <!-- 成员信息显示区域 -->
+                                                <StackPanel x:Name="MemberInfoPanel">
+                                                        <!-- 这里将根据选择的操作动态显示内容 -->
+                                                </StackPanel>
+                                        </StackPanel>
+                                </Border>
+                        </Popup>
+
+                        <!-- 删除确认弹窗 -->
+                        <Popup x:Name="DeleteConfirmPopup"
+                               StaysOpen="True"
+                               Placement="Center"
+                               AllowsTransparency="True"
+                               PopupAnimation="Fade">
+                                <Border Width="400"
+                                        Background="#FFFFFF"
+                                        CornerRadius="14"
+                                        Padding="28,24"
+                                        Margin="0,0,0,8">
+                                        <Border.Effect>
+                                                <DropShadowEffect ShadowDepth="4"
+                                                                  BlurRadius="28"
+                                                                  Opacity="0.18"
+                                                                  Color="#1A1714"/>
+                                        </Border.Effect>
+                                        <StackPanel>
+                                                <TextBlock Text="确认删除族谱"
+                                                           FontSize="18"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#2C2217"
+                                                           Margin="0,0,0,16"/>
+
+                                                <TextBlock Text="确定要删除该族谱吗？此操作不可恢复。"
+                                                           FontSize="14"
+                                                           Foreground="#8A7E72"
+                                                           Margin="0,0,0,24"/>
+
+                                                <StackPanel Orientation="Horizontal"
+                                                            Margin="0,0,0,0">
+                                                        <Button Content="确认删除"
+                                                                Style="{StaticResource OperationButtonStyle}"
+                                                                Click="ClanDeleteConfirm_Click"/>
+                                                        <Button Content="取消"
+                                                                Style="{StaticResource OperationButtonStyle}"
+                                                                Click="ClanDeleteCancel_Click"/>
+                                                </StackPanel>
+                                        </StackPanel>
+                                </Border>
+                        </Popup>
+                </Grid>
+        </ScrollViewer>
+</Page>
