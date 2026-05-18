@@ -78,6 +78,33 @@
                         </Style.Triggers>
                 </Style>
 
+                <!-- SQL 高级查询按钮（自适应宽度，避免文字裁切） -->
+                <Style x:Key="SqlQueryButtonStyle"
+                       TargetType="Button"
+                       BasedOn="{StaticResource OperationButtonStyle}">
+                        <Setter Property="Width" Value="Auto"/>
+                        <Setter Property="MinWidth" Value="108"/>
+                        <Setter Property="Height" Value="Auto"/>
+                        <Setter Property="MinHeight" Value="36"/>
+                        <Setter Property="Padding" Value="12,8"/>
+                        <Setter Property="FontSize" Value="12"/>
+                        <Setter Property="Template">
+                                <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}"
+                                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                                        CornerRadius="6"
+                                                        Padding="{TemplateBinding Padding}">
+                                                        <ContentPresenter HorizontalAlignment="Center"
+                                                                          VerticalAlignment="Center"
+                                                                          RecognizesAccessKey="True"/>
+                                                </Border>
+                                        </ControlTemplate>
+                                </Setter.Value>
+                        </Setter>
+                </Style>
+
                 <!-- 输入框样式 -->
                 <Style x:Key="InputBoxStyle"
                        TargetType="TextBox">
@@ -761,6 +788,108 @@
                                                         </Border>
                                                 </StackPanel>
                                         </Grid>
+
+                                        <Border Background="#FFFFFF"
+                                                BorderBrush="#E0D6CA"
+                                                BorderThickness="1"
+                                                CornerRadius="12"
+                                                Padding="20"
+                                                Margin="20,24,20,0">
+                                                <StackPanel>
+                                                        <TextBlock Text="SQL 高级查询"
+                                                                   FontSize="18"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="#2C2217"
+                                                                   Margin="0,0,0,8"/>
+                                                        <TextBlock Text="请先填族谱 ID（必填）；「配偶与子女」还需填成员 ID。若只填成员 ID，将尝试自动查找其所属族谱；也可先在族谱卡片点「成员管理」自动带入族谱 ID。"
+                                                                   FontSize="11"
+                                                                   Foreground="#8A7E72"
+                                                                   TextWrapping="Wrap"
+                                                                   Margin="0,0,0,12"/>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                                                <controls:PlaceholderTextBox x:Name="SqlQueryTreeIdInput"
+                                                                                             Width="120"
+                                                                                             Style="{StaticResource InputBoxStyle}"
+                                                                                             Placeholder="族谱ID *"
+                                                                                             Margin="0,0,8,0"/>
+                                                                <controls:PlaceholderTextBox x:Name="SqlQueryMemberIdInput"
+                                                                                             Width="120"
+                                                                                             Style="{StaticResource InputBoxStyle}"
+                                                                                             Placeholder="成员ID"
+                                                                                             Margin="0,0,8,0"/>
+                                                        </StackPanel>
+                                                        <WrapPanel Margin="0,0,0,12">
+                                                                <Button Content="1. 配偶与子女"
+                                                                        Style="{StaticResource SqlQueryButtonStyle}"
+                                                                        Margin="0,0,8,8"
+                                                                        Click="SqlSpouseChildren_Click"/>
+                                                                <Button Content="2. 最长寿辈分"
+                                                                        Style="{StaticResource SqlQueryButtonStyle}"
+                                                                        Margin="0,0,8,8"
+                                                                        Click="SqlLongestLifespanGen_Click"/>
+                                                                <Button Content="3. 50岁+无配偶男"
+                                                                        Style="{StaticResource SqlQueryButtonStyle}"
+                                                                        Margin="0,0,8,8"
+                                                                        Click="SqlMalesOver50NoSpouse_Click"/>
+                                                                <Button Content="4. 早于辈分均年出生"
+                                                                        Style="{StaticResource SqlQueryButtonStyle}"
+                                                                        Margin="0,0,8,8"
+                                                                        Click="SqlEarlierThanGenAvgBirth_Click"/>
+                                                        </WrapPanel>
+                                                        <TextBlock x:Name="SqlQuerySummary"
+                                                                   FontSize="12"
+                                                                   Foreground="#5C5348"
+                                                                   TextWrapping="Wrap"
+                                                                   Margin="0,0,0,8"/>
+                                                        <StackPanel x:Name="SqlQueryPagingPanel"
+                                                                    Orientation="Horizontal"
+                                                                    Margin="0,0,0,8"
+                                                                    Visibility="Collapsed">
+                                                                <Button x:Name="SqlQueryPrevPageButton"
+                                                                        Content="上一页"
+                                                                        Style="{StaticResource OperationButtonStyle}"
+                                                                        Width="72"
+                                                                        Height="32"
+                                                                        IsEnabled="False"
+                                                                        Click="SqlQueryPrevPageButton_Click"/>
+                                                                <TextBlock x:Name="SqlQueryPageInfo"
+                                                                           Text="第 1 页"
+                                                                           FontSize="12"
+                                                                           Foreground="#8A7E72"
+                                                                           VerticalAlignment="Center"
+                                                                           Margin="12,0"/>
+                                                                <Button x:Name="SqlQueryNextPageButton"
+                                                                        Content="下一页"
+                                                                        Style="{StaticResource OperationButtonStyle}"
+                                                                        Width="72"
+                                                                        Height="32"
+                                                                        IsEnabled="False"
+                                                                        Click="SqlQueryNextPageButton_Click"/>
+                                                        </StackPanel>
+                                                        <Border Background="#FAF7F3"
+                                                                BorderBrush="#E0D6CA"
+                                                                BorderThickness="1"
+                                                                CornerRadius="8"
+                                                                Padding="8"
+                                                                MaxHeight="240">
+                                                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                                                        <ListView x:Name="SqlQueryResultList"
+                                                                                  BorderThickness="0"
+                                                                                  Background="Transparent">
+                                                                                <ListView.ItemTemplate>
+                                                                                        <DataTemplate>
+                                                                                                <TextBlock Text="{Binding}"
+                                                                                                           FontSize="12"
+                                                                                                           Foreground="#2C2217"
+                                                                                                           TextWrapping="Wrap"
+                                                                                                           Margin="4,2"/>
+                                                                                        </DataTemplate>
+                                                                                </ListView.ItemTemplate>
+                                                                        </ListView>
+                                                                </ScrollViewer>
+                                                        </Border>
+                                                </StackPanel>
+                                        </Border>
                                 </StackPanel>
                         </Border>
 

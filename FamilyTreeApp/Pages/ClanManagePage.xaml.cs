@@ -30,10 +30,18 @@ public partial class ClanManagePage : Page
     private ulong _currentTreeId;
 
     private const int MemberSearchPageSize = 80;
+    private const int SqlQueryPageSize = 40;
     private ulong _memberSearchTreeId;
     private string? _memberSearchKeyword;
     private int _memberSearchPage = 1;
     private int _memberSearchTotal;
+
+    private string? _sqlQueryApiPath;
+    private ulong _sqlQueryTreeId;
+    private ulong _sqlQueryMemberId;
+    private int _sqlQueryPage = 1;
+    private int _sqlQueryTotal;
+    private bool _sqlQueryUsesPaging = true;
 
     public ClanManagePage(ulong userId)
     {
@@ -286,6 +294,182 @@ public partial class ClanManagePage : Page
     {
         ScrollViewerHelper.ApplySmoothScrolling(MainPageScroll);
         ScrollViewerHelper.ApplyToDescendants(PageRoot);
+    }
+
+    private async void SqlSpouseChildren_Click(object sender, RoutedEventArgs e) =>
+        await RunSqlQueryAsync(sender, "配偶与子女", requireMemberId: true, "spouse-and-children", usesPaging: true);
+
+    private async void SqlLongestLifespanGen_Click(object sender, RoutedEventArgs e) =>
+        await RunSqlQueryAsync(sender, "最长寿辈分", requireMemberId: false, "longest-lifespan-generation", usesPaging: false);
+
+    private async void SqlMalesOver50NoSpouse_Click(object sender, RoutedEventArgs e) =>
+        await RunSqlQueryAsync(sender, "50岁无配偶男性", requireMemberId: false, "males-over-50-no-spouse", usesPaging: true);
+
+    private async void SqlEarlierThanGenAvgBirth_Click(object sender, RoutedEventArgs e) =>
+        await RunSqlQueryAsync(sender, "早于辈分均年出生", requireMemberId: false, "earlier-than-generation-avg-birth", usesPaging: true);
+
+    private async void SqlQueryPrevPageButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_sqlQueryPage <= 1 || string.IsNullOrEmpty(_sqlQueryApiPath)) return;
+        _sqlQueryPage--;
+        await LoadSqlQueryPageAsync("SQL 查询");
+    }
+
+    private async void SqlQueryNextPageButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_sqlQueryApiPath)) return;
+        var totalPages = _sqlQueryTotal == 0 ? 0 : (int)Math.Ceiling(_sqlQueryTotal / (double)SqlQueryPageSize);
+        if (_sqlQueryPage >= totalPages) return;
+        _sqlQueryPage++;
+        await LoadSqlQueryPageAsync("SQL 查询");
+    }
+
+    private async Task RunSqlQueryAsync(
+        object sender,
+        string title,
+        bool requireMemberId,
+        string apiPath,
+        bool usesPaging)
+    {
+        ulong memberId = 0;
+        if (requireMemberId)
+        {
+            var memberIdText = SqlQueryMemberIdInput.GetActualText().Trim();
+            if (!ulong.TryParse(memberIdText, out memberId) || memberId == 0)
+            {
+                MessageBox.Show("请输入有效的成员 ID（「配偶与子女」查询需要）。", title, MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+        }
+
+        var treeId = await ResolveSqlQueryTreeIdAsync(memberId);
+        if (treeId == 0)
+        {
+            MessageBox.Show(
+                "请输入有效的族谱 ID（本区「族谱ID」框）。\n\n若只填了成员 ID，请确认该成员在库中存在；或先在族谱列表中点击「成员管理」选中族谱。",
+                title,
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        _sqlQueryApiPath = apiPath;
+        _sqlQueryTreeId = treeId;
+        _sqlQueryMemberId = memberId;
+        _sqlQueryUsesPaging = usesPaging;
+        _sqlQueryPage = 1;
+
+        var button = sender as Button;
+        try
+        {
+            if (button is not null) button.IsEnabled = false;
+            await LoadSqlQueryPageAsync(title);
+        }
+        finally
+        {
+            if (button is not null) button.IsEnabled = true;
+        }
+    }
+
+    private async Task LoadSqlQueryPageAsync(string title)
+    {
+        if (string.IsNullOrEmpty(_sqlQueryApiPath)) return;
+
+        try
+        {
+            Mouse.OverrideCursor = Cursors.Wait;
+            SqlQuerySummary.Text = "查询中…";
+
+            var url = BuildSqlQueryUrl();
+            var response = await _httpClient.GetAsync(url);
+            var body = await response.Content.ReadAsStringAsync();
+            var result = JsonSerializer.Deserialize<MemberAdvancedQueryResponseDto>(body, JsonOptions);
+
+            if (result is not { Success: true })
+            {
+                SqlQuerySummary.Text = "";
+                SqlQueryResultList.ItemsSource = null;
+                SqlQueryPagingPanel.Visibility = Visibility.Collapsed;
+                MessageBox.Show(result?.Message ?? "查询失败。", title, MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            _sqlQueryTotal = result.Total;
+            _sqlQueryPage = result.Page > 0 ? result.Page : _sqlQueryPage;
+            SqlQuerySummary.Text = result.Summary ?? $"返回 {result.Rows.Count} 条。";
+            SqlQueryResultList.ItemsSource = result.Rows.Select(FormatSqlQueryRow).ToList();
+            UpdateSqlQueryPagingUi(result);
+        }
+        catch (Exception ex)
+        {
+            SqlQuerySummary.Text = "";
+            MessageBox.Show($"{title}失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            Mouse.OverrideCursor = null;
+        }
+    }
+
+    private string BuildSqlQueryUrl()
+    {
+        var url = $"api/MemberQueries/{_sqlQueryApiPath}?treeId={_sqlQueryTreeId}";
+        if (_sqlQueryMemberId > 0)
+            url += $"&memberId={_sqlQueryMemberId}";
+        if (_sqlQueryUsesPaging)
+        {
+            url += $"&page={_sqlQueryPage}&pageSize={SqlQueryPageSize}";
+            if (_sqlQueryPage > 1 && _sqlQueryTotal > 0)
+                url += $"&skipCount=true&knownTotal={_sqlQueryTotal}";
+        }
+
+        return url;
+    }
+
+    private void UpdateSqlQueryPagingUi(MemberAdvancedQueryResponseDto result)
+    {
+        if (!_sqlQueryUsesPaging || result.Total <= SqlQueryPageSize)
+        {
+            SqlQueryPagingPanel.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var pageSize = result.PageSize > 0 ? result.PageSize : SqlQueryPageSize;
+        var totalPages = (int)Math.Ceiling(result.Total / (double)pageSize);
+        SqlQueryPagingPanel.Visibility = Visibility.Visible;
+        SqlQueryPageInfo.Text = $"第 {result.Page} / {totalPages} 页（共 {result.Total} 条，每页 {pageSize} 条）";
+        SqlQueryPrevPageButton.IsEnabled = result.Page > 1;
+        SqlQueryNextPageButton.IsEnabled = result.Page < totalPages;
+    }
+
+    private static string FormatSqlQueryRow(MemberQueryRowDto r)
+    {
+        if (r.RelationKind == "统计")
+        {
+            return $"{r.FullName} · 平均寿命约 {r.AvgLifespanYears:F2} 年 · 样本 {r.MemberCount} 人";
+        }
+
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(r.RelationKind))
+            parts.Add($"[{r.RelationKind}]");
+        if (r.MemberId > 0)
+            parts.Add($"ID {r.MemberId}");
+        parts.Add(r.FullName);
+        if (!string.IsNullOrWhiteSpace(r.Gender))
+            parts.Add(r.Gender);
+        if (r.Generation.HasValue)
+            parts.Add($"第{r.Generation}代");
+        if (r.Depth.HasValue)
+            parts.Add($"上{r.Depth}代");
+        if (r.AgeYears.HasValue)
+            parts.Add($"{r.AgeYears}岁");
+        if (r.BirthYear.HasValue)
+            parts.Add($"生于{r.BirthYear}");
+        if (r.GenerationAvgBirthYear.HasValue)
+            parts.Add($"辈分均年{ r.GenerationAvgBirthYear:F1}");
+        if (r.BirthDate.HasValue)
+            parts.Add($"生日 {r.BirthDate:yyyy-MM-dd}");
+        return string.Join(" · ", parts);
     }
 
     private async void MemberSearchButton_Click(object sender, RoutedEventArgs e)
@@ -588,10 +772,59 @@ public partial class ClanManagePage : Page
 
     private async Task<MemberDto?> FetchMemberAsync(ulong treeId, ulong memberId)
     {
-        var response = await _httpClient.GetAsync($"api/Members/{memberId}?treeId={treeId}");
+        var url = treeId > 0 ? $"api/Members/{memberId}?treeId={treeId}" : $"api/Members/{memberId}";
+        var response = await _httpClient.GetAsync(url);
         var body = await response.Content.ReadAsStringAsync();
         var result = JsonSerializer.Deserialize<MemberSingleResponseDto>(body, JsonOptions);
         return result is { Success: true, Data: { } data } ? data : null;
+    }
+
+    private static ulong ParsePlaceholderId(PlaceholderTextBox box)
+    {
+        var text = box.GetActualText().Trim();
+        return ulong.TryParse(text, out var id) ? id : 0;
+    }
+
+    private static void SetPlaceholderBoxValue(PlaceholderTextBox box, string value)
+    {
+        box.Focus();
+        box.Text = value;
+        box.CaretIndex = value.Length;
+        Keyboard.ClearFocus();
+    }
+
+    private void ApplyCurrentTreeIdToQueryInputs()
+    {
+        if (_currentTreeId == 0) return;
+        var idText = _currentTreeId.ToString();
+        SetPlaceholderBoxValue(SqlQueryTreeIdInput, idText);
+        SetPlaceholderBoxValue(MemberSearchTreeIdInput, idText);
+        SetPlaceholderBoxValue((PlaceholderTextBox)TreeIdInput, idText);
+    }
+
+    private async Task<ulong> ResolveSqlQueryTreeIdAsync(ulong memberIdHint)
+    {
+        var treeId = ParsePlaceholderId(SqlQueryTreeIdInput);
+        if (treeId > 0) return treeId;
+
+        treeId = ParsePlaceholderId(MemberSearchTreeIdInput);
+        if (treeId > 0) return treeId;
+
+        treeId = ParsePlaceholderId((PlaceholderTextBox)TreeIdInput);
+        if (treeId > 0) return treeId;
+
+        if (_currentTreeId > 0) return _currentTreeId;
+
+        if (memberIdHint == 0) return 0;
+
+        var member = await FetchMemberAsync(0, memberIdHint);
+        if (member is { TreeId: > 0 })
+        {
+            SetPlaceholderBoxValue(SqlQueryTreeIdInput, member.TreeId.ToString());
+            return member.TreeId;
+        }
+
+        return 0;
     }
 
     private async Task<List<MemberTreeNodeSummaryDto>> FetchChildrenAsync(ulong treeId, ulong memberId)
@@ -728,6 +961,7 @@ public partial class ClanManagePage : Page
         if (sender is Button { DataContext: ClanInfo clan })
         {
             _currentTreeId = ulong.Parse(clan.Id);
+            ApplyCurrentTreeIdToQueryInputs();
             InviteUserIdInput.Text = "";
             OpenCenteredPopup(InvitePopup);
         }
@@ -742,6 +976,7 @@ public partial class ClanManagePage : Page
         if (sender is Button button && button.DataContext is ClanInfo clan)
         {
             _currentTreeId = ulong.Parse(clan.Id);
+            ApplyCurrentTreeIdToQueryInputs();
             OpenCenteredPopup(MemberPopup);
         }
     }
@@ -809,6 +1044,7 @@ public partial class ClanManagePage : Page
         if (sender is Button { DataContext: ClanInfo clan })
         {
             _currentTreeId = ulong.Parse(clan.Id);
+            ApplyCurrentTreeIdToQueryInputs();
             OpenCenteredPopup(DeleteConfirmPopup);
         }
         else

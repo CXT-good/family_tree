@@ -328,6 +328,72 @@ public class MemberRelationNodeDto
     public string RelationToPrevious { get; set; } = "";
 }
 
+public class MemberQueryRowDto
+{
+    [JsonPropertyName("memberId")]
+    public ulong MemberId { get; set; }
+
+    [JsonPropertyName("fullName")]
+    public string FullName { get; set; } = "";
+
+    [JsonPropertyName("gender")]
+    public string Gender { get; set; } = "";
+
+    [JsonPropertyName("generation")]
+    public uint? Generation { get; set; }
+
+    [JsonPropertyName("birthDate")]
+    public DateTime? BirthDate { get; set; }
+
+    [JsonPropertyName("deathDate")]
+    public DateTime? DeathDate { get; set; }
+
+    [JsonPropertyName("relationKind")]
+    public string? RelationKind { get; set; }
+
+    [JsonPropertyName("depth")]
+    public int? Depth { get; set; }
+
+    [JsonPropertyName("ageYears")]
+    public int? AgeYears { get; set; }
+
+    [JsonPropertyName("birthYear")]
+    public int? BirthYear { get; set; }
+
+    [JsonPropertyName("generationAvgBirthYear")]
+    public double? GenerationAvgBirthYear { get; set; }
+
+    [JsonPropertyName("avgLifespanYears")]
+    public double? AvgLifespanYears { get; set; }
+
+    [JsonPropertyName("memberCount")]
+    public int? MemberCount { get; set; }
+}
+
+public class MemberAdvancedQueryResponseDto
+{
+    [JsonPropertyName("success")]
+    public bool Success { get; set; }
+
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+
+    [JsonPropertyName("summary")]
+    public string? Summary { get; set; }
+
+    [JsonPropertyName("total")]
+    public int Total { get; set; }
+
+    [JsonPropertyName("page")]
+    public int Page { get; set; }
+
+    [JsonPropertyName("pageSize")]
+    public int PageSize { get; set; }
+
+    [JsonPropertyName("rows")]
+    public List<MemberQueryRowDto> Rows { get; set; } = new();
+}
+
 public class MemberRelationshipResponseDto
 {
     [JsonPropertyName("success")]
