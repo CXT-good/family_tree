@@ -892,9 +892,11 @@
                                         </Border>
                                 </StackPanel>
                         </Border>
+                </Grid>
+                </ScrollViewer>
 
-                        <!-- 邀请他人管理弹窗 -->
-                        <Popup x:Name="InvitePopup"
+                <!-- 弹窗置于 ScrollViewer 外，避免打开时带动主页面滚动 -->
+                <Popup x:Name="InvitePopup"
                                StaysOpen="True"
                                Placement="Center"
                                PlacementTarget="{Binding ElementName=PageRoot}"
@@ -1027,7 +1029,5 @@
                                         </StackPanel>
                                 </Border>
                         </Popup>
-                </Grid>
-                </ScrollViewer>
         </Grid>
 </Page>

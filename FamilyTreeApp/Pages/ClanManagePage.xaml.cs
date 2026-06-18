@@ -973,12 +973,14 @@ public partial class ClanManagePage : Page
 
     private void MemberOperationButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button button && button.DataContext is ClanInfo clan)
+        if (sender is Button { DataContext: ClanInfo clan })
         {
             _currentTreeId = ulong.Parse(clan.Id);
             ApplyCurrentTreeIdToQueryInputs();
             OpenCenteredPopup(MemberPopup);
         }
+
+        e.Handled = true;
     }
 
     private static readonly IntPtr HwndTopMost = new(-1);
@@ -991,20 +993,41 @@ public partial class ClanManagePage : Page
 
     private void OpenCenteredPopup(Popup popup)
     {
+        var savedScrollOffset = MainPageScroll.VerticalOffset;
+
+        void RestoreMainScroll()
+        {
+            if (!MainPageScroll.IsLoaded) return;
+            MainPageScroll.ScrollToVerticalOffset(savedScrollOffset);
+        }
+
         void OnOpened(object? s, EventArgs e)
         {
             popup.Opened -= OnOpened;
+            RestoreMainScroll();
             if (popup.Child != null)
                 popup.Dispatcher.BeginInvoke(() => SetPopupTopmost(popup), DispatcherPriority.Loaded);
         }
 
+        void OnClosed(object? s, EventArgs e)
+        {
+            popup.Closed -= OnClosed;
+            MainPageScroll.IsHitTestVisible = true;
+            RestoreMainScroll();
+        }
+
         popup.Opened -= OnOpened;
+        popup.Closed -= OnClosed;
         popup.Opened += OnOpened;
+        popup.Closed += OnClosed;
         popup.PlacementTarget = PageRoot;
         popup.Placement = PlacementMode.Center;
         popup.HorizontalOffset = 0;
         popup.VerticalOffset = 0;
+        MainPageScroll.IsHitTestVisible = false;
         popup.IsOpen = true;
+        RestoreMainScroll();
+        Dispatcher.BeginInvoke(RestoreMainScroll, DispatcherPriority.Loaded);
     }
 
     private static void SetPopupTopmost(Popup popup)
